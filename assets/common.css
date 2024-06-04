@@ -1,0 +1,136 @@
+/**
+ * @license
+ * Copyright 2024 Google LLC.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+body {
+  display: grid;
+  font-family: "Google Sans", sans-serif;
+  grid-template-rows: min-content 1fr min-content;
+  margin: 0;
+  min-height: 100vh;
+  overflow-y: hidden;
+  padding: 5px;
+}
+
+button {
+  background-color: #4285f4;
+  border: none;
+  box-sizing: border-box;
+  color: white;
+  cursor: pointer;
+  font-weight: 500;
+  padding: 8px 16px;
+  transition: background-color 0.3s ease;
+}
+
+button:active {
+  opacity: 1;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button:hover {
+  background-color: #3367d6;
+}
+
+footer {
+  bottom: 0;
+  margin-top: 5px;
+  position: sticky;
+  z-index: 1;
+}
+
+header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+main {
+  overflow-y: auto;
+}
+
+p {
+  margin: 0px;
+  padding-bottom: 10px;
+}
+
+.error {
+  color: #ea4335;
+  font-weight: bold;
+}
+
+.info {
+  color: #000;
+  font-weight: normal;
+}
+
+.progress {
+  background-color: #e0e0e0;
+  border-radius: 5px;
+  height: 20px;
+  margin: 8px;
+  overflow: hidden;
+  width: auto;
+}
+
+.progress-bar {
+  animation: flash 1s infinite alternate;
+  background-color: #4285f4;
+  height: 100%;
+  transition: width 0.5s ease;
+  width: 0%;
+}
+
+.results {
+  border-collapse: collapse;
+  font-size: 12px;
+  padding: 8px 5px;
+  width: 100%;
+}
+
+.results td {
+  background-color: #ffffff;
+}
+
+.results th {
+  background-color: #f5f5f5;
+  color: #3c4043;
+}
+
+.results th, .results td {
+  border: 1px solid #dadce0;
+  font-size: 12px;
+  padding: 8px 5px;
+}
+
+@keyframes flash {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0.5;
+  }
+}
