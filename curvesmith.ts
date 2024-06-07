@@ -60,6 +60,13 @@ export function callback(functionName: string, args: object[]): unknown {
   }
 }
 
+/** Handles the `onEdit` event for the active sheet. */
+export function onEdit(event: GoogleAppsScript.Events.SheetsOnEdit): void {
+  const sheetHandler = getSheetHandler();
+
+  sheetHandler.handleEdit(event);
+}
+
 /**
  * When the spreadsheet is first opened, add a solution specific menu that will
  * facilitate the creation and upload of custom curves.
@@ -430,6 +437,7 @@ function uploadLineItems(
   adManagerHandler.uploadLineItems(lineItems);
 }
 
+global.onEdit = onEdit;
 global.onOpen = onOpen;
 global.callback = callback;
 global.include = include;

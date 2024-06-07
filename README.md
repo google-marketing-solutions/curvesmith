@@ -85,17 +85,15 @@ You will need to initialize the spreadsheet created earlier:
 
 *   Create a new sheet with the template name you defined in the previous range.
 
-Next, in the template sheet, define placeholder named ranges for each component
-of the template:
+In your template sheet, define the following named ranges:
 
-*   Create a one-cell named range called `AD_UNIT_ID`.
-*   Create a one-cell named range called `GOAL_TYPE`.
-*   Create a four-column named range called `SCHEDULED_EVENTS`. This range will
-    contain a collection of scheduled event rows, so you'll want this to be as
-    many rows as you think you may need per template.
-*   In the template sheet, create a six-column named range called `LINE_ITEMS`.
-    This range will contain line item metadata retrieved from GAM, so you'll
-    want this to be as many rows as you think you may need per template.
+*   `AD_UNIT_ID` (1 cell)
+*   `GOAL_TYPE` (1 cell)
+*   `SCHEDULED_EVENTS` (4 columns, 50+ rows, or as many as you anticipate
+    needing)
+*   `LINE_ITEMS` (6 columns, 50+ rows, or as many as you anticipate needing)
+*   `SELECT_ALL` (1 cell, insert a checkbox (`Insert -> Checkbox`) for easy
+    toggling)
 
 ## Usage
 

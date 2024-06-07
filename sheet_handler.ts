@@ -47,8 +47,11 @@ export class SheetHandler {
   /** Named range where the user can specify line items. [Size: 5x?] */
   static readonly NAMED_RANGE_LINE_ITEMS = 'LINE_ITEMS';
 
-  /** Named range where the user can specify custom events. [Size: 4x?]*/
+  /** Named range where the user can specify custom events. [Size: 4x?] */
   static readonly NAMED_RANGE_SCHEDULED_EVENTS = 'SCHEDULED_EVENTS';
+
+  /** Named range where the user can batch select line items. [Size: 1x1] */
+  static readonly NAMED_RANGE_SELECT_ALL = 'SELECT_ALL';
 
   constructor(readonly sheet: GoogleAppsScript.Spreadsheet.Sheet) {}
 
@@ -208,6 +211,42 @@ export class SheetHandler {
   }
 
   /**
+   * Handles the `onEdit` event for the associated sheet.
+   *
+   * This function will only respond to changes to the `SELECT_ALL` named range.
+   * If the user checks the `SELECT_ALL` checkbox, then all line items will be
+   * selected. If the user unchecks the `SELECT_ALL` checkbox, then all line
+   * items will be deselected.
+   * @param event The onEdit event from Apps Script
+   */
+  handleEdit(event: GoogleAppsScript.Events.SheetsOnEdit): void {
+    const selectAllRange = this.getNamedRange(
+      SheetHandler.NAMED_RANGE_SELECT_ALL,
+    );
+
+    if (event.range.getA1Notation() === selectAllRange.getA1Notation()) {
+      const lineItemsRange = this.getNamedRange(
+        SheetHandler.NAMED_RANGE_LINE_ITEMS,
+      );
+
+      const selectedValues = lineItemsRange.getValues().map((row) => row[0]);
+
+      const emptyRowIndex = selectedValues.findIndex((r) => r === '');
+
+      const selectedColumnRange = this.sheet.getRange(
+        /* row= */ lineItemsRange.getRow(),
+        /* column= */ lineItemsRange.getColumn(),
+        /* numRows= */ emptyRowIndex,
+        /* numColumns= */ 1,
+      );
+
+      selectedColumnRange.setValues(
+        Array(selectedColumnRange.getNumRows()).fill([event.value]),
+      );
+    }
+  }
+
+  /**
    * Given a named range, identifies the first empty row and returns a sub-range
    * where the provided number of rows (e.g. `count`) should be appended. If the
    * named range is already fully populated, then it will be expanded by the
@@ -302,7 +341,7 @@ export class SpreadsheetHandler {
     const templateSheet = this.spreadsheet.getSheetByName(templateName);
 
     if (templateSheet) {
-      templateSheet.copyTo(this.spreadsheet).activate()
+      templateSheet.copyTo(this.spreadsheet).activate();
     } else {
       throw new Error('Template sheet does not exist');
     }
