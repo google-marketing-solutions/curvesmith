@@ -104,12 +104,27 @@ spreadsheet. If it doesn't appear, you can try refreshing the page.
 To use the solution for the currently configured GAM network, select `Custom
 Curves > Show Sidebar`.
 
-Although only users with access to the Ad Manager network will be able to use
-the solution to interface with Ad Manager, please be aware that basic line item
-data will be visible to anyone with access to the Google Sheets spreadsheet
-regardless of whether or not they have access to the data in Google Ad Manager.
-
-### Disclaimer
+## Disclaimer
 
 This is not an officially supported Google product. The code shared here is not
 formally supported by Google and is provided only as a reference.
+
+This solution allows users with Ad Manager network access to interact with their
+Ad Manager data through Google Sheets. However, it is important to understand
+that certain line item information will be visible within the Google Sheets
+spreadsheet to anyone who has access to it, regardless of whether they have
+permission to view that data in Ad Manager itself.
+
+The specific line item details that may be visible include:
+
+-   Line item ID
+-   Line item name
+-   Flight dates (start and end dates)
+-   Impression goal
+
+To maintain data confidentiality, we strongly recommend that users avoid
+including any sensitive or confidential terms when naming their line items in Ad
+Manager.
+
+By using this solution, you acknowledge and accept the potential visibility of
+this basic line item data within the Google Sheets environment.
