@@ -21,7 +21,13 @@ Built with: [Google Apps Script](https://www.google.com/script/start/),
     [custom delivery curves](https://support.google.com/admanager/answer/9293326?hl=en)
     work in GAM
 
-## To deploy the solution
+## Deploy
+
+To get your own copy of this solution, you can make a copy of this
+[Google Sheet](https://docs.google.com/spreadsheets/d/1caV1a76I9Pel_TR_iwxUz4a0K9LCKK3L0MDOGwNXGvg/edit?usp=sharing)
+or deploy entirely from code as detailed below.
+
+## Deploy manually
 
 After cloning the repository, open a terminal in the repository directory.
 
