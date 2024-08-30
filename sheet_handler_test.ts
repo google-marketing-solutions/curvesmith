@@ -32,7 +32,8 @@ describe('SheetHandler', () => {
   let sheetMock: jasmine.SpyObj<GoogleAppsScript.Spreadsheet.Sheet>;
   let spreadsheetAppMock: jasmine.SpyObj<GoogleAppsScript.Spreadsheet.SpreadsheetApp>;
   let spreadsheetMock: jasmine.SpyObj<GoogleAppsScript.Spreadsheet.Spreadsheet>;
-  let namedRangeMock: jasmine.SpyObj<GoogleAppsScript.Spreadsheet.Range>;
+  let namedRangeMock: jasmine.SpyObj<GoogleAppsScript.Spreadsheet.NamedRange>;
+  let rangeMock: jasmine.SpyObj<GoogleAppsScript.Spreadsheet.Range>;
 
   beforeAll(() => {
     // SpreadsheetApp is unavailable outside of the Apps Script environment.
@@ -70,6 +71,7 @@ describe('SheetHandler', () => {
   beforeEach(() => {
     spreadsheetMock =
       jasmine.createSpyObj<GoogleAppsScript.Spreadsheet.Spreadsheet>([
+        'getNamedRanges',
         'getRangeByName',
       ]);
 
@@ -77,6 +79,7 @@ describe('SheetHandler', () => {
       'getName',
       'getRange',
       'getParent',
+      'insertRows',
     ]);
     sheetMock.getName.and.returnValue('Sheet');
     sheetMock.getParent.and.returnValue(spreadsheetMock);
@@ -87,6 +90,7 @@ describe('SheetHandler', () => {
           return createRangeMock(sheetMock, row, column, numRows, numColumns);
         },
       );
+    sheetMock.insertRows.and.stub();
 
     sheetHandler = new SheetHandler(sheetMock);
   });
@@ -100,20 +104,22 @@ describe('SheetHandler', () => {
         /* sheet= */ sheetMock,
         /* rangeName= */ SheetHandler.NAMED_RANGE_LINE_ITEMS,
       );
-      namedRangeMock = createRangeMock(
+      rangeMock = createRangeMock(
         sheetMock,
         /* row= */ 1,
         /* column= */ 1,
         /* numRows= */ 10,
         /* numColumns= */ 6,
       );
+      namedRangeMock = createNamedRangeMock(lineItemsRangeName, rangeMock);
+      spreadsheetMock.getNamedRanges.and.returnValue([namedRangeMock]);
       spreadsheetMock.getRangeByName
         .withArgs(lineItemsRangeName)
-        .and.returnValue(namedRangeMock);
+        .and.returnValue(rangeMock);
     });
 
     it('appends data to the start of an empty range', () => {
-      namedRangeMock.getValues.and.returnValue(
+      rangeMock.getValues.and.returnValue(
         createFakeLineData(/* lineItemCount= */ 0, /* rowCount= */ 10),
       );
 
@@ -123,7 +129,7 @@ describe('SheetHandler', () => {
     });
 
     it('appends data to first empty row in a range', () => {
-      namedRangeMock.getValues.and.returnValue(
+      rangeMock.getValues.and.returnValue(
         createFakeLineData(/* lineItemCount= */ 5, /* rowCount= */ 10),
       );
 
@@ -133,7 +139,7 @@ describe('SheetHandler', () => {
     });
 
     it('appends data past the end of the named range', () => {
-      namedRangeMock.getValues.and.returnValue(
+      rangeMock.getValues.and.returnValue(
         createFakeLineData(/* lineItemCount= */ 10, /* rowCount= */ 10),
       );
 
@@ -149,9 +155,7 @@ describe('SheetHandler', () => {
     });
 
     it('throws an error if the LINE_ITEMS range does not exist', () => {
-      spreadsheetMock.getRangeByName
-        .withArgs(lineItemsRangeName)
-        .and.returnValue(null);
+      spreadsheetMock.getNamedRanges.and.returnValue([]);
 
       expect(() => {
         sheetHandler.appendLineItems([MOCK_LINE_ITEM_ROW]);
@@ -168,20 +172,22 @@ describe('SheetHandler', () => {
         /* sheet= */ sheetMock,
         /* rangeName= */ SheetHandler.NAMED_RANGE_AD_UNIT_ID,
       );
-      namedRangeMock = createRangeMock(
+      rangeMock = createRangeMock(
         sheetMock,
         /* row= */ 1,
         /* column= */ 1,
         /* numRows= */ 1,
         /* numColumns= */ 1,
       );
+      namedRangeMock = createNamedRangeMock(adUnitIdRangeName, rangeMock);
+      spreadsheetMock.getNamedRanges.and.returnValue([namedRangeMock]);
       spreadsheetMock.getRangeByName
         .withArgs(adUnitIdRangeName)
-        .and.returnValue(namedRangeMock);
+        .and.returnValue(rangeMock);
     });
 
     it('returns the ad unit id', () => {
-      namedRangeMock.getValue.and.returnValue(['5281981']);
+      rangeMock.getValue.and.returnValue(['5281981']);
 
       const adUnitId = sheetHandler.getAdUnitId();
 
@@ -189,9 +195,7 @@ describe('SheetHandler', () => {
     });
 
     it('throws an error if the AD_UNIT_ID range does not exist locally', () => {
-      spreadsheetMock.getRangeByName
-        .withArgs(adUnitIdRangeName)
-        .and.returnValue(null);
+      spreadsheetMock.getNamedRanges.and.returnValue([]);
 
       expect(() => {
         sheetHandler.getAdUnitId();
@@ -208,20 +212,22 @@ describe('SheetHandler', () => {
         /* sheet= */ sheetMock,
         /* rangeName= */ SheetHandler.NAMED_RANGE_GOAL_TYPE,
       );
-      namedRangeMock = createRangeMock(
+      rangeMock = createRangeMock(
         sheetMock,
         /* row= */ 1,
         /* column= */ 1,
         /* numRows= */ 1,
         /* numColumns= */ 1,
       );
+      namedRangeMock = createNamedRangeMock(goalTypeRangeName, rangeMock);
+      spreadsheetMock.getNamedRanges.and.returnValue([namedRangeMock]);
       spreadsheetMock.getRangeByName
         .withArgs(goalTypeRangeName)
-        .and.returnValue(namedRangeMock);
+        .and.returnValue(rangeMock);
     });
 
     it('returns the goal type', () => {
-      namedRangeMock.getValue.and.returnValue('DAY');
+      rangeMock.getValue.and.returnValue('DAY');
 
       const goalType = sheetHandler.getGoalType();
 
@@ -229,9 +235,7 @@ describe('SheetHandler', () => {
     });
 
     it('throws an error if the GOAL_TYPE range does not exist locally', () => {
-      spreadsheetMock.getRangeByName
-        .withArgs(goalTypeRangeName)
-        .and.returnValue(null);
+      spreadsheetMock.getNamedRanges.and.returnValue([]);
 
       expect(() => {
         sheetHandler.getGoalType();
@@ -248,16 +252,21 @@ describe('SheetHandler', () => {
         /* sheet= */ sheetMock,
         /* rangeName= */ SheetHandler.NAMED_RANGE_SCHEDULED_EVENTS,
       );
-      namedRangeMock = createRangeMock(
+      rangeMock = createRangeMock(
         sheetMock,
         /* row= */ 1,
         /* column= */ 1,
         /* numRows= */ 5,
         /* numColumns= */ 4,
       );
+      namedRangeMock = createNamedRangeMock(
+        scheduledEventsRangeName,
+        rangeMock,
+      );
+      spreadsheetMock.getNamedRanges.and.returnValue([namedRangeMock]);
       spreadsheetMock.getRangeByName
         .withArgs(scheduledEventsRangeName)
-        .and.returnValue(namedRangeMock);
+        .and.returnValue(rangeMock);
     });
 
     it('returns the scheduled events', () => {
@@ -268,7 +277,7 @@ describe('SheetHandler', () => {
         ['', '', '', ''],
         ['', '', '', ''],
       ];
-      namedRangeMock.getValues.and.returnValue(scheduledEventRows);
+      rangeMock.getValues.and.returnValue(scheduledEventRows);
 
       const scheduledEvents = sheetHandler.getScheduledEvents();
 
@@ -279,9 +288,7 @@ describe('SheetHandler', () => {
     });
 
     it('throws an error if the SCHEDULED_EVENTS range does not exist', () => {
-      spreadsheetMock.getRangeByName
-        .withArgs(scheduledEventsRangeName)
-        .and.returnValue(null);
+      spreadsheetMock.getNamedRanges.and.returnValue([]);
 
       expect(() => {
         sheetHandler.getScheduledEvents();
@@ -298,16 +305,18 @@ describe('SheetHandler', () => {
         /* sheet= */ sheetMock,
         /* rangeName= */ SheetHandler.NAMED_RANGE_LINE_ITEMS,
       );
-      namedRangeMock = createRangeMock(
+      rangeMock = createRangeMock(
         sheetMock,
         /* row= */ 1,
         /* column= */ 1,
         /* numRows= */ 10,
         /* numColumns= */ 6,
       );
+      namedRangeMock = createNamedRangeMock(lineItemsRangeName, rangeMock);
+      spreadsheetMock.getNamedRanges.and.returnValue([namedRangeMock]);
       spreadsheetMock.getRangeByName
         .withArgs(lineItemsRangeName)
-        .and.returnValue(namedRangeMock);
+        .and.returnValue(rangeMock);
     });
 
     it('returns no line items if none are selected', () => {
@@ -315,7 +324,7 @@ describe('SheetHandler', () => {
         /* lineItemCount= */ 10,
         /* rowCount= */ 10,
       );
-      namedRangeMock.getValues.and.returnValue(lineItemRows);
+      rangeMock.getValues.and.returnValue(lineItemRows);
 
       const selectedLineItemRows = sheetHandler.getSelectedLineItems();
 
@@ -329,7 +338,7 @@ describe('SheetHandler', () => {
       );
       lineItemRows[0][0] = true; // Mark the first line item selected
       lineItemRows[1][0] = true; // Mark the second line item selected
-      namedRangeMock.getValues.and.returnValue(lineItemRows);
+      rangeMock.getValues.and.returnValue(lineItemRows);
 
       const selectedLineItemRows = sheetHandler.getSelectedLineItems();
 
@@ -343,7 +352,7 @@ describe('SheetHandler', () => {
       );
       lineItemRows[0][0] = true; // Mark the first line item selected
       lineItemRows[0][5] = 'ABC'; // Set an invalid impression goal
-      namedRangeMock.getValues.and.returnValue(lineItemRows);
+      rangeMock.getValues.and.returnValue(lineItemRows);
 
       const selectedLineItemRows = sheetHandler.getSelectedLineItems();
 
@@ -357,7 +366,7 @@ describe('SheetHandler', () => {
       );
       lineItemRows[0][0] = true; // Mark the first line item selected
       lineItemRows[0][1] = ''; // Set an invalid line item ID
-      namedRangeMock.getValues.and.returnValue(lineItemRows);
+      rangeMock.getValues.and.returnValue(lineItemRows);
 
       const selectedLineItemRows = sheetHandler.getSelectedLineItems();
 
@@ -365,9 +374,7 @@ describe('SheetHandler', () => {
     });
 
     it('throws an error if the LINE_ITEMS range does not exist', () => {
-      spreadsheetMock.getRangeByName
-        .withArgs(lineItemsRangeName)
-        .and.returnValue(null);
+      spreadsheetMock.getNamedRanges.and.returnValue([]);
 
       expect(() => {
         sheetHandler.getSelectedLineItems();
@@ -409,6 +416,25 @@ function createFakeLineData(lineItemCount: number, rowCount: number): any[][] {
   values.push(...Array(rowCount - lineItemCount).fill(emptyRow));
 
   return values;
+}
+
+/** Returns a `NamedRange` mock with the given configuration. */
+function createNamedRangeMock(
+  name: string,
+  range: GoogleAppsScript.Spreadsheet.Range,
+): jasmine.SpyObj<GoogleAppsScript.Spreadsheet.NamedRange> {
+  const namedRangeMock =
+    jasmine.createSpyObj<GoogleAppsScript.Spreadsheet.NamedRange>([
+      'getName',
+      'getRange',
+      'setRange',
+    ]);
+
+  namedRangeMock.getName.and.returnValue(name);
+  namedRangeMock.getRange.and.returnValue(range);
+  namedRangeMock.setRange.and.returnValue(namedRangeMock);
+
+  return namedRangeMock;
 }
 
 /** Returns a `Range` mock with the given configuration. */

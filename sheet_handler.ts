@@ -64,10 +64,11 @@ export class SheetHandler {
    */
   appendLineItems(lineItems: LineItemRow[]): number | undefined {
     if (lineItems.length > 0) {
-      const appendRange = this.getAppendRange(
+      const namedRange = this.getNamedRange(
         SheetHandler.NAMED_RANGE_LINE_ITEMS,
-        lineItems.length,
       );
+
+      const appendRange = this.getAppendRange(namedRange, lineItems.length);
 
       const lineItemValues = lineItems.map((lineItem) => [
         /* selected= */ false,
@@ -94,6 +95,8 @@ export class SheetHandler {
 
       selectedColumnRange.setDataValidation(dataValidation);
 
+      this.expandNamedRange(namedRange, lineItems.length);
+
       return appendRange.setValues(lineItemValues).getRow();
     }
 
@@ -104,7 +107,7 @@ export class SheetHandler {
   clearLineItems() {
     const lineItemsRange = this.getNamedRange(
       SheetHandler.NAMED_RANGE_LINE_ITEMS,
-    );
+    ).getRange();
 
     lineItemsRange.clearContent();
     lineItemsRange.removeCheckboxes();
@@ -147,7 +150,7 @@ export class SheetHandler {
   getSelectedLineItems(): LineItemRow[] {
     const lineItemsRange = this.getNamedRange(
       SheetHandler.NAMED_RANGE_LINE_ITEMS,
-    );
+    ).getRange();
 
     const lineItemRows: LineItemRow[] = [];
 
@@ -186,7 +189,9 @@ export class SheetHandler {
     // [[Start, End, Goal Percent, Title],..]
     const rangeValues = this.getNamedRange(
       SheetHandler.NAMED_RANGE_SCHEDULED_EVENTS,
-    ).getValues();
+    )
+      .getRange()
+      .getValues();
 
     const events: ScheduledEvent[] = [];
 
@@ -222,12 +227,12 @@ export class SheetHandler {
   handleEdit(event: GoogleAppsScript.Events.SheetsOnEdit): void {
     const selectAllRange = this.getNamedRange(
       SheetHandler.NAMED_RANGE_SELECT_ALL,
-    );
+    ).getRange();
 
     if (event.range.getA1Notation() === selectAllRange.getA1Notation()) {
       const lineItemsRange = this.getNamedRange(
         SheetHandler.NAMED_RANGE_LINE_ITEMS,
-      );
+      ).getRange();
 
       const selectedValues = lineItemsRange.getValues().map((row) => row[0]);
 
@@ -247,37 +252,59 @@ export class SheetHandler {
   }
 
   /**
+   * Increases the size of the named range by the provided number of rows.
+   * @param namedRange The named range to be modified
+   * @param rowCount The number of rows to increase by
+   */
+  private expandNamedRange(
+    namedRange: GoogleAppsScript.Spreadsheet.NamedRange,
+    rowCount: number,
+  ) {
+    this.sheet.insertRows(namedRange.getRange().getLastRow(), rowCount);
+
+    const range = namedRange.getRange();
+
+    const largerNamedRange = this.sheet.getRange(
+      /* row= */ range.getRow(),
+      /* column= */ range.getColumn(),
+      /* numRows= */ range.getNumRows() + rowCount,
+      /* numColumns= */ range.getNumColumns(),
+    );
+
+    namedRange.setRange(largerNamedRange);
+  }
+
+  /**
    * Given a named range, identifies the first empty row and returns a sub-range
    * where the provided number of rows (e.g. `count`) should be appended. If the
    * named range is already fully populated, then it will be expanded by the
    * provided number of rows.
-   * @param name The name of the range that will receive new rows
+   * @param namedRange The named range that will receive new rows
    * @param count The number of rows that will be appended
    */
   private getAppendRange(
-    name: string,
+    namedRange: GoogleAppsScript.Spreadsheet.NamedRange,
     count: number,
   ): GoogleAppsScript.Spreadsheet.Range {
-    const namedRange = this.getNamedRange(name);
-
-    const values = namedRange.getValues();
+    const range = namedRange.getRange();
+    const values = range.getValues();
 
     // Find the index of the first empty row
-    const emptyRowIndex = values.findIndex((r) => r.every((c) => c === ''));
+    const emptyRowIndex = values.findIndex((r) => r.every((c) => !c));
 
     if (emptyRowIndex < 0) {
       return this.sheet.getRange(
-        /* row= */ namedRange.getLastRow() + 1,
-        /* column= */ namedRange.getColumn(),
+        /* row= */ range.getLastRow() + 1,
+        /* column= */ range.getColumn(),
         /* numRows= */ count,
-        /* numColumns= */ namedRange.getNumColumns(),
+        /* numColumns= */ range.getNumColumns(),
       );
     } else {
       return this.sheet.getRange(
-        /* row= */ namedRange.getRow() + emptyRowIndex,
-        /* column= */ namedRange.getColumn(),
+        /* row= */ range.getRow() + emptyRowIndex,
+        /* column= */ range.getColumn(),
         /* numRows= */ count,
-        /* numColumns= */ namedRange.getNumColumns(),
+        /* numColumns= */ range.getNumColumns(),
       );
     }
   }
@@ -287,23 +314,25 @@ export class SheetHandler {
    * locally within the associated sheet.
    *
    * Each named range within a template sheet can be referenced locally by
-   * prepending the sheet name to the range name (e.g. 'Sheet1!RANGE_NAME').
+   * prepending the sheet name to the range name (e.g. 'Sheet1'!RANGE_NAME).
    * This function explicitly only looks for a local named range and will throw
    * an error if a match could not be found.
    * @param name The name of the range to read
    * @throws An error if the named range does not exist within this sheet
    */
-  private getNamedRange(name: string): GoogleAppsScript.Spreadsheet.Range {
+  private getNamedRange(name: string): GoogleAppsScript.Spreadsheet.NamedRange {
     const sheetName = this.sheet.getName();
     const localName = `'${sheetName}'!${name}`;
 
     const spreadsheet = this.sheet.getParent();
-    const localRange = spreadsheet.getRangeByName(localName);
 
-    if (!localRange || localRange.getSheet().getName() !== sheetName) {
-      throw new RangeError(`${name} range does not exist`);
+    for (const namedRange of spreadsheet.getNamedRanges()) {
+      if (namedRange.getName() === localName) {
+        return namedRange;
+      }
     }
-    return localRange;
+
+    throw new RangeError(`${name} range does not exist`);
   }
 
   /**
@@ -313,7 +342,7 @@ export class SheetHandler {
    * @throws An error if the named range does not exist
    */
   private getNamedValue(name: string): any {
-    return this.getNamedRange(name).getValue();
+    return this.getNamedRange(name).getRange().getValue();
   }
 }
 

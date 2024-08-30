@@ -136,6 +136,10 @@ export class UIElementRenderer extends EventTarget {
       progressBar.style.width = '100%';
       progressBar.style.animation = 'none';
     });
+
+    this.queryAndExecute<HTMLElement>('.progress-text', (progressText) => {
+      progressText.textContent = '';
+    });
   }
 
   /**
@@ -150,7 +154,6 @@ export class UIElementRenderer extends EventTarget {
 
     google.script.run
       .withSuccessHandler((x) => this.updateProgressBar(x))
-      .withFailureHandler((e) => this.finishTaskWithFailure(e))
       ['callback']('getTaskProgress');
   }
 
@@ -162,6 +165,10 @@ export class UIElementRenderer extends EventTarget {
         const progress = Math.min(relative * 100, 100);
 
         progressBar.style.width = `${progress}%`;
+      });
+
+      this.queryAndExecute<HTMLElement>('.progress-text', (progressText) => {
+        progressText.textContent = `Progress: ${taskProgress.current} of ${taskProgress.total}`;
       });
     }
   }
