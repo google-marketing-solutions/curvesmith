@@ -97,6 +97,7 @@ export declare interface LineItem {
   name: string;
   startDateTime: DateTime;
   endDateTime: DateTime;
+  autoExtensionDays: number;
   deliveryForecastSource?: string;
   customPacingCurve?: CustomPacingCurve;
   allowOverbook?: boolean;

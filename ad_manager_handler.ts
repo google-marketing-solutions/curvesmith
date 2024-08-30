@@ -86,7 +86,7 @@ export class AdManagerHandler {
    * The number of objects to request at a time. This value was empirically
    * determined to be the optimal tradeoff between UX and performance.
    */
-  static readonly AD_MANAGER_API_PAGE_LIMIT = 10;
+  static readonly AD_MANAGER_API_PAGE_LIMIT = 50;
 
   /**
    * Updates each of the provided line items with a custom delivery curve. This
@@ -297,15 +297,24 @@ export class AdManagerHandler {
       statement,
     ) as ad_manager.LineItemPage;
 
-    // If no ad unit IDs are provided, then skip the targeting check
-    if (filter.adUnitIds.length === 0) {
-      return lineItemPage;
-    }
+    const earliestEndDate = this.getDateTime(filter.earliestEndDate);
 
-    // PQL queries cannot filter on targeting, so handle explicitly here
-    const filteredLineItems = lineItemPage.results.filter((lineItem) =>
-      this.hasTargetedAdUnitMatch(lineItem, filter.adUnitIds),
-    );
+    const filteredLineItems = lineItemPage.results.filter((lineItem) => {
+      // PQL currently accounts for auto extension days when filtering on End
+      // Date, but that feature is incompatible with custom delivery curves.
+      // This check ensures that the target date is within the filter range.
+      if (this.compareDateTimes(lineItem.endDateTime, earliestEndDate) < 0) {
+        return false;
+      }
+
+      // If no ad unit IDs are provided, then skip the targeting check
+      if (filter.adUnitIds.length === 0) {
+        return true;
+      }
+
+      // PQL queries cannot filter on targeting, so handle explicitly here.
+      return this.hasTargetedAdUnitMatch(lineItem, filter.adUnitIds);
+    });
 
     return {
       totalResultSetSize: lineItemPage.totalResultSetSize,
@@ -362,6 +371,54 @@ export class AdManagerHandler {
 
     const lineItemService = this.getService('LineItemService');
     lineItemService.performOperation('updateLineItems', lineItems);
+  }
+
+  /**
+   * Compares two `Date` objects and returns a negative number if the first is
+   * earlier, a positive number if the second is earlier, and zero if they are
+   * equal.
+   */
+  private compareDates(a: ad_manager.Date, b: ad_manager.Date): number {
+    if (a.year === b.year) {
+      if (a.month === b.month) {
+        return a.day - b.day;
+      }
+      return a.month - b.month;
+    }
+    return a.year - b.year;
+  }
+
+  /**
+   * Compares two `DateTime` objects and returns a negative number if the first
+   * is earlier, a positive number if the second is earlier, and zero if they
+   * are equal.
+   */
+  private compareDateTimes(
+    a: ad_manager.DateTime,
+    b: ad_manager.DateTime,
+  ): number {
+    if (a.timeZoneId !== b.timeZoneId) {
+      throw new Error(
+        'Cannot compare DateTime objects with different time zones',
+      );
+    }
+
+    const compareValue = this.compareDates(a.date, b.date);
+
+    if (compareValue === 0) {
+      const compareHours = a.hour - b.hour;
+
+      if (compareHours === 0) {
+        const compareMinutes = a.minute - b.minute;
+
+        if (compareMinutes === 0) {
+          return a.second - b.second;
+        }
+        return compareMinutes;
+      }
+      return compareHours;
+    }
+    return compareValue;
   }
 
   /**

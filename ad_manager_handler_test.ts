@@ -134,6 +134,17 @@ describe('AdManagerHandler', () => {
       // the actual Ad Manager API calls, so we'll always return the same fake
       // data and validate that the results are filtered as expected.
       mockLine1AdUnit1234 = jasmine.createSpyObj('LineItem', [], {
+        endDateTime: {
+          date: {
+            year: 2026,
+            month: 1,
+            day: 1,
+          },
+          hour: 0,
+          minute: 0,
+          second: 0,
+          timeZoneId: 'America/Los_Angeles',
+        },
         targeting: {
           inventoryTargeting: {
             targetedAdUnits: [{adUnitId: '1234'}],
@@ -141,6 +152,17 @@ describe('AdManagerHandler', () => {
         },
       });
       mockLine2AdUnit1234 = jasmine.createSpyObj('LineItem', [], {
+        endDateTime: {
+          date: {
+            year: 2026,
+            month: 1,
+            day: 1,
+          },
+          hour: 0,
+          minute: 0,
+          second: 0,
+          timeZoneId: 'America/Los_Angeles',
+        },
         targeting: {
           inventoryTargeting: {
             targetedAdUnits: [{adUnitId: '1234'}],
@@ -148,6 +170,17 @@ describe('AdManagerHandler', () => {
         },
       });
       mockLineAdUnit5678 = jasmine.createSpyObj('LineItem', [], {
+        endDateTime: {
+          date: {
+            year: 2026,
+            month: 1,
+            day: 1,
+          },
+          hour: 0,
+          minute: 0,
+          second: 0,
+          timeZoneId: 'America/Los_Angeles',
+        },
         targeting: {
           inventoryTargeting: {
             targetedAdUnits: [{adUnitId: '5678'}],
@@ -177,7 +210,27 @@ describe('AdManagerHandler', () => {
       // The second call should use the cached LineItemService.
       adManagerHandler.getLineItemsByFilter(lineItemFilter, 1);
 
-      expect(mockClient.getService).toHaveBeenCalledOnceWith('LineItemService');
+      const serviceNames = mockClient.getService.calls.allArgs().map(
+        (args) => args[0],
+      );
+      expect(serviceNames.filter(x => x === 'LineItemService').length).toBe(1);
+    });
+
+    it('filters line items with end dates that are too early', () => {
+      // Simulate line item returned because of grace period.
+      mockLineAdUnit5678.endDateTime.date = {
+        year: 2024,
+        month: 12,
+        day: 31,
+      };
+      const adUnitIds: string[] = [];
+
+      const lineItemPage = getLineItemsByAdUnitFilter(mockClient, adUnitIds);
+
+      expect(lineItemPage.results).toEqual([
+        mockLine1AdUnit1234,
+        mockLine2AdUnit1234,
+      ]);
     });
 
     it('returns an empty array if no line items match', () => {
