@@ -47,6 +47,9 @@ export class SheetHandler {
   /** Named range where the user can specify line items. [Size: 5x?] */
   static readonly NAMED_RANGE_LINE_ITEMS = 'LINE_ITEMS';
 
+  /** Named range where the user can specify line items. [Size: 1x1] */
+  static readonly NAMED_RANGE_NAME_FILTER = 'NAME_FILTER';
+
   /** Named range where the user can specify custom events. [Size: 4x?] */
   static readonly NAMED_RANGE_SCHEDULED_EVENTS = 'SCHEDULED_EVENTS';
 
@@ -140,6 +143,14 @@ export class SheetHandler {
     const goalType = this.getNamedValue(SheetHandler.NAMED_RANGE_GOAL_TYPE);
 
     return GoalType[goalType as keyof typeof GoalType];
+  }
+
+  /**
+   * Returns the name filter expression from the associated sheet. This depends
+   * on the existence of the `NAME_FILTER` named range.
+   */
+  getNameFilter(): string {
+    return String(this.getNamedValue(SheetHandler.NAMED_RANGE_NAME_FILTER));
   }
 
   /**
@@ -241,7 +252,9 @@ export class SheetHandler {
       const selectedColumnRange = this.sheet.getRange(
         /* row= */ lineItemsRange.getRow(),
         /* column= */ lineItemsRange.getColumn(),
-        /* numRows= */ emptyRowIndex,
+        /* numRows= */ emptyRowIndex < 0
+          ? lineItemsRange.getNumRows()
+          : emptyRowIndex,
         /* numColumns= */ 1,
       );
 

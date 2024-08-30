@@ -262,9 +262,11 @@ describe('curvesmith', () => {
         'appendLineItems',
         'clearLineItems',
         'getAdUnitId',
+        'getNameFilter',
         'getScheduledEvents',
       ]);
       sheetHandlerMock.getAdUnitId.and.returnValue('1234');
+      sheetHandlerMock.getNameFilter.and.returnValue('');
       sheetHandlerMock.getScheduledEvents.and.returnValue([
         new ScheduledEvent('1/1/2024', '1/2/2024', 33, ''),
         new ScheduledEvent('1/3/2024', '1/4/2024', 33, ''),

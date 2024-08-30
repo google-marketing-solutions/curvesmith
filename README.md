@@ -95,6 +95,7 @@ In your template sheet, define the following named ranges:
 
 *   `AD_UNIT_ID` (1 cell)
 *   `GOAL_TYPE` (1 cell)
+*   `NAME_FILTER` (1 cell)
 *   `SCHEDULED_EVENTS` (4 columns, 50+ rows, or as many as you anticipate
     needing)
 *   `LINE_ITEMS` (6 columns, 50+ rows, or as many as you anticipate needing)

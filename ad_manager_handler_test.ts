@@ -134,6 +134,7 @@ describe('AdManagerHandler', () => {
       // the actual Ad Manager API calls, so we'll always return the same fake
       // data and validate that the results are filtered as expected.
       mockLine1AdUnit1234 = jasmine.createSpyObj('LineItem', [], {
+        name: 'Line Item 1',
         endDateTime: {
           date: {
             year: 2026,
@@ -152,6 +153,7 @@ describe('AdManagerHandler', () => {
         },
       });
       mockLine2AdUnit1234 = jasmine.createSpyObj('LineItem', [], {
+        name: 'Line Item 2 (ROS)',
         endDateTime: {
           date: {
             year: 2026,
@@ -170,6 +172,7 @@ describe('AdManagerHandler', () => {
         },
       });
       mockLineAdUnit5678 = jasmine.createSpyObj('LineItem', [], {
+        name: 'Line Item 3 - ROS',
         endDateTime: {
           date: {
             year: 2026,
@@ -202,6 +205,7 @@ describe('AdManagerHandler', () => {
         adUnitIds: ['1234'],
         latestStartDate: new Date('2024-01-01 00:00:00'),
         earliestEndDate: new Date('2025-01-01 00:00:00'),
+        nameFilter: '',
       };
       const adManagerHandler = new AdManagerHandler(mockClient);
 
@@ -275,6 +279,26 @@ describe('AdManagerHandler', () => {
         mockLine2AdUnit1234,
       ]);
     });
+
+    it('returns line items that match the provided name filter', () => {
+      const lineItemFilter: LineItemFilter = {
+        adUnitIds: [],
+        latestStartDate: new Date('2024-01-01 00:00:00'),
+        earliestEndDate: new Date('2025-01-01 00:00:00'),
+        nameFilter: 'ROS',
+      };
+      const adManagerHandler = new AdManagerHandler(mockClient);
+
+      const lineItemPage = adManagerHandler.getLineItemsByFilter(
+        lineItemFilter,
+        0,
+      );
+
+      expect(lineItemPage.results).toEqual([
+        mockLine2AdUnit1234,
+        mockLineAdUnit5678,
+      ]);
+    });
   });
 });
 
@@ -291,6 +315,7 @@ function getLineItemsByAdUnitFilter(
     adUnitIds,
     latestStartDate: new Date('2024-01-01 00:00:00'),
     earliestEndDate: new Date('2025-01-01 00:00:00'),
+    nameFilter: '',
   };
 
   return adManagerHandler.getLineItemsByFilter(lineItemFilter, 0);

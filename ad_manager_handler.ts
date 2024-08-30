@@ -42,6 +42,9 @@ export interface LineItemFilter {
 
   /** Line items must complete their flights no earlier than this date. */
   earliestEndDate: Date;
+
+  /** Line item names must match this filter expression (case-insensitive). */
+  nameFilter: string;
 }
 
 /**
@@ -297,6 +300,7 @@ export class AdManagerHandler {
       statement,
     ) as ad_manager.LineItemPage;
 
+    const nameRegex = new RegExp(filter.nameFilter, 'i');
     const earliestEndDate = this.getDateTime(filter.earliestEndDate);
 
     const filteredLineItems = lineItemPage.results.filter((lineItem) => {
@@ -304,6 +308,12 @@ export class AdManagerHandler {
       // Date, but that feature is incompatible with custom delivery curves.
       // This check ensures that the target date is within the filter range.
       if (this.compareDateTimes(lineItem.endDateTime, earliestEndDate) < 0) {
+        return false;
+      }
+
+      // PQL supports basic wild card matching (e.g. "LIKE '%foo%'"), but it is
+      // insufficient for common client needs; handle client-side instead.
+      if (!nameRegex.test(lineItem.name)) {
         return false;
       }
 

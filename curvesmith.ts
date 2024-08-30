@@ -180,6 +180,7 @@ function getLineItemFilter(
 ): am_handler.LineItemFilter {
   const adUnitId = sheetHandler.getAdUnitId();
   const events = sheetHandler.getScheduledEvents();
+  const nameFilter = sheetHandler.getNameFilter().trim();
 
   if (events.length === 0) {
     throw new Error('No scheduled events are specified');
@@ -203,6 +204,7 @@ function getLineItemFilter(
     adUnitIds: adManagerHandler.getAdUnitIds(adUnitId),
     latestStartDate,
     earliestEndDate,
+    nameFilter,
   };
 }
 
