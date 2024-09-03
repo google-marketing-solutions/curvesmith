@@ -346,7 +346,7 @@ export class AdManagerHandler {
       .withLimit(AdManagerHandler.AD_MANAGER_API_PAGE_LIMIT)
       .toStatement();
 
-    const lineItemService = this.client.getService('LineItemService');
+    const lineItemService = this.getService('LineItemService');
     return lineItemService.performOperation(
       'getLineItemsByStatement',
       statement,
