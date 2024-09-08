@@ -25,6 +25,7 @@
  * communicate status back to a client script.
  */
 export declare interface TaskProgress {
+  action: string;
   current: number;
   total: number;
 }
@@ -168,7 +169,7 @@ export class UIElementRenderer extends EventTarget {
       });
 
       this.queryAndExecute<HTMLElement>('.progress-text', (progressText) => {
-        progressText.textContent = `Progress: ${taskProgress.current} of ${taskProgress.total}`;
+        progressText.textContent = `${taskProgress.action}: ${taskProgress.current} of ${taskProgress.total}`;
       });
     }
   }

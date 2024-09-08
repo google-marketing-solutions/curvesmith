@@ -266,7 +266,7 @@ function getLineItemsWithIds(
 
     offset += am_handler.AdManagerHandler.AD_MANAGER_API_PAGE_LIMIT;
 
-    setTaskProgress(offset, lineItemPage.totalResultSetSize);
+    setTaskProgress('Retrieved', offset, lineItemPage.totalResultSetSize);
   } while (offset < lineItemPage.totalResultSetSize);
 
   return lineItems;
@@ -286,10 +286,12 @@ function getSpreadsheetHandler(): SpreadsheetHandler {
 function getTaskProgress(): TaskProgress {
   const userProperties = PropertiesService.getUserProperties();
 
+  const action = userProperties.getProperty('action');
   const current = userProperties.getProperty('current');
   const total = userProperties.getProperty('total');
 
   return {
+    action: action ? action : 'Progress',
     current: current ? Number(current) : 0,
     total: total ? Number(total) : 0,
   };
@@ -354,18 +356,19 @@ function loadLineItems(
 
     offset += am_handler.AdManagerHandler.AD_MANAGER_API_PAGE_LIMIT;
 
-    setTaskProgress(offset, lineItemPage.totalResultSetSize);
+    setTaskProgress('Retrieved', offset, lineItemPage.totalResultSetSize);
   } while (offset < lineItemPage.totalResultSetSize);
 }
 
 /** Sets the current and total progress values for the active task. */
-function setTaskProgress(current: number, total: number): void {
+function setTaskProgress(action: string, current: number, total: number): void {
   const userProperties = PropertiesService.getUserProperties();
 
   if (current > total) {
     current = total; // Ensure current is never greater than total
   }
 
+  userProperties.setProperty('action', action);
   userProperties.setProperty('current', current.toString());
   userProperties.setProperty('total', total.toString());
 }
@@ -435,8 +438,12 @@ function uploadLineItems(
 
   const lineItems = getLineItemsWithIds(lineItemIds, adManagerHandler);
 
+  setTaskProgress('Uploaded', 0, lineItems.length);
+
   adManagerHandler.applyCurveToLineItems(lineItems, curveTemplate);
   adManagerHandler.uploadLineItems(lineItems);
+
+  setTaskProgress('Uploaded', lineItems.length, lineItems.length);
 }
 
 global.onEdit = onEdit;

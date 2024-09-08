@@ -75,6 +75,7 @@ div.close {
 
 .status {
   font-weight: bold;
+  padding-top: 20px;
 }
 
 .unapproved {
