@@ -495,8 +495,6 @@ export class UploadRenderer extends UIElementRenderer {
    * without navigating to the result stage.
    */
   private parseLineItemFailures(errorMessage: string) {
-    const lineItemIds = this.approvedLineItemIds.values;
-
     // Matches line item details from AdManagerServerFault errors
     const lineItemRegex = /([^\[\.,\s]*) @ lineItem\[(\d+)\]\.([^;]*)?/g;
 
@@ -505,13 +503,11 @@ export class UploadRenderer extends UIElementRenderer {
     if (matches) {
       let errorCount = 0;
       for (const match of matches) {
-        const [, errorType, lineItemIndex, fieldPath] = match;
-
-        const lineItemId = lineItemIds[parseInt(lineItemIndex)];
+        const [, errorType, lineItemId, fieldPath] = match;
 
         this.queryAndExecute<HTMLTableElement>('.errors', (table) => {
           const row = table.insertRow();
-          row.insertCell().textContent = String(lineItemId);
+          row.insertCell().textContent = lineItemId;
           row.insertCell().textContent = errorType;
           row.insertCell().textContent = fieldPath;
         });

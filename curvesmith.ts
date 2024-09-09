@@ -26,6 +26,8 @@ import {FlightDetails} from './custom_curve';
 import {LineItemRow, SheetHandler, SpreadsheetHandler} from './sheet_handler';
 import * as ad_manager from './typings/ad_manager';
 
+import {AdManagerServerFault} from 'gam_apps_script/ad_manager_error';
+
 /**
  * A map of callback functions that can be called from client side JavaScript.
  */
@@ -106,10 +108,8 @@ export function showSidebar(): void {
 }
 
 /**
- * Applies historical delivery pacing to line items referenced within the active
- * sheet. Selection behavior follows:
- * - If no line items are selected, then all line items will be affected
- * - If line items are selected, then only those line items will be affected
+ * Applies historical delivery pacing to all selected line items within the
+ * active sheet.
  */
 function applyHistorical(
   adManagerHandler: am_handler.AdManagerHandler = getAdManagerHandler(),
@@ -130,10 +130,18 @@ function applyHistorical(
   }
 
   const lineItemIds = lineItemRows.map((lineItemRow) => lineItemRow.id);
-  const lineItems = getLineItemsWithIds(lineItemIds, adManagerHandler);
 
-  adManagerHandler.applyHistoricalToLineItems(lineItems);
-  adManagerHandler.uploadLineItems(lineItems);
+  try {
+    transformAndUploadLineItems(
+      lineItemIds,
+      (lineItems) => {
+        adManagerHandler.applyHistoricalToLineItems(lineItems);
+      },
+      adManagerHandler,
+    );
+  } catch (error) {
+    throw new Error('Partial completion');
+  }
 }
 
 /**
@@ -265,8 +273,6 @@ function getLineItemsWithIds(
     lineItems.push(...lineItemPage.results);
 
     offset += am_handler.AdManagerHandler.AD_MANAGER_API_PAGE_LIMIT;
-
-    setTaskProgress('Retrieved', offset, lineItemPage.totalResultSetSize);
   } while (offset < lineItemPage.totalResultSetSize);
 
   return lineItems;
@@ -425,6 +431,118 @@ function showUploadDialog(): void {
 }
 
 /**
+ * Extracts metadata about line items that failed to upload.
+ * @param serverFault The error returned from the Ad Manager API
+ * @param lineItems The line items that were sent to the Ad Manager API
+ * @param failureIdList A modified set of line item IDs that failed to upload
+ * @param errorMessages A modified list of error messages for display
+ */
+function identifyLineItemFailures(
+  serverFault: AdManagerServerFault,
+  lineItems: ad_manager.LineItem[],
+  failureIdList: Set<number>,
+  errorMessages: string[],
+) {
+  const fieldPathRegex = /^lineItem\[(\d+)\]\.([^;]*)?$/;
+
+  serverFault.errors.forEach((error) => {
+    const fieldPathMatch = error.fieldPath.match(fieldPathRegex);
+
+    if (fieldPathMatch) {
+      const [, lineItemIndex, fieldPath] = fieldPathMatch;
+
+      const lineItem = lineItems[parseInt(lineItemIndex)];
+
+      // Cache line items that are failing
+      failureIdList.add(lineItem.id);
+
+      // Cache error messages for display upon completion
+      errorMessages.push(
+        `${error.errorString} @ lineItem[${lineItem.id}].${fieldPath};`,
+      );
+    }
+  });
+}
+
+/**
+ * Given a list of line item IDs, retrieve the corresponding line items from
+ * Ad Manager, apply a transformation to the line items, and then upload the
+ * modified line items to Ad Manager. To ensure performance, these operations
+ * are performed in batches. If any errors occur during a batch, the user is
+ * given the option to exclude the failing line items and try again. This option
+ * will only be presented once, after which the remaining line items will be
+ * uploaded without further prompting.
+ */
+function transformAndUploadLineItems(
+  lineItemIds: number[],
+  transformer: (lineItems: ad_manager.LineItem[]) => void,
+  adManagerHandler: am_handler.AdManagerHandler = getAdManagerHandler(),
+): void {
+  const batchSize = am_handler.AdManagerHandler.AD_MANAGER_API_PAGE_LIMIT;
+
+  const RETRY_MESSAGE =
+    'One or more errors occurred during an upload batch. ' +
+    'Exclude the problematic line items and try again?';
+
+  let offset = 0;
+  let firstFailure = true;
+  let errorMessages: string[] = [];
+
+  do {
+    const batchOffset = offset + batchSize;
+    const lineItemIdsBatch = lineItemIds.slice(offset, batchOffset);
+
+    setTaskProgress('Retrieving', offset, lineItemIds.length);
+
+    const lineItems = getLineItemsWithIds(lineItemIdsBatch, adManagerHandler);
+
+    setTaskProgress('Retrieved', batchOffset, lineItemIds.length);
+
+    transformer(lineItems);
+
+    setTaskProgress('Uploading', batchOffset, lineItemIds.length);
+
+    const failureIdList = new Set<number>();
+
+    try {
+      adManagerHandler.uploadLineItems(lineItems);
+    } catch (e) {
+      if (e instanceof AdManagerServerFault) {
+        identifyLineItemFailures(e, lineItems, failureIdList, errorMessages);
+
+        // If no lines were identified in the error, then the error is
+        // unexpected and should be rethrown.
+        if (failureIdList.size === 0) {
+          throw e;
+        }
+
+        if (firstFailure && shouldCancelAction(RETRY_MESSAGE)) {
+          break;
+        } else {
+          firstFailure = false;
+
+          // Remove any line items that failed to upload from the batch
+          const filteredLineItems = lineItems.filter(
+            (lineItem) => !failureIdList.has(lineItem.id),
+          );
+
+          // Attempt to upload the remaining line items
+          adManagerHandler.uploadLineItems(filteredLineItems);
+        }
+      }
+    } finally {
+      offset += lineItemIdsBatch.length;
+
+      setTaskProgress('Uploaded', offset, lineItemIds.length);
+    }
+  } while (offset < lineItemIds.length);
+
+  if (errorMessages.length > 0) {
+    throw new Error(errorMessages.join(','));
+  }
+}
+
+/**
  * Updates the line items with the custom delivery curve specified in the
  * active sheet.
  * @return An array containing status for each line item update requested
@@ -436,14 +554,13 @@ function uploadLineItems(
 ): void {
   const curveTemplate = sheetHandler.getCurveTemplate();
 
-  const lineItems = getLineItemsWithIds(lineItemIds, adManagerHandler);
-
-  setTaskProgress('Uploaded', 0, lineItems.length);
-
-  adManagerHandler.applyCurveToLineItems(lineItems, curveTemplate);
-  adManagerHandler.uploadLineItems(lineItems);
-
-  setTaskProgress('Uploaded', lineItems.length, lineItems.length);
+  transformAndUploadLineItems(
+    lineItemIds,
+    (lineItems) => {
+      adManagerHandler.applyCurveToLineItems(lineItems, curveTemplate);
+    },
+    adManagerHandler,
+  );
 }
 
 global.onEdit = onEdit;
