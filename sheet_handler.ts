@@ -20,14 +20,10 @@
  */
 
 import {CurveTemplate, GoalType, ScheduledEvent} from './custom_curve';
+import {LineItemDto} from './ad_manager_handler';
 
 /** Represents a single row of line item metadata within a sheet. */
-export interface LineItemRow {
-  id: number;
-  name: string;
-  startDate: string;
-  endDate: string;
-  impressionGoal: number;
+export interface LineItemRow extends LineItemDto {
   selected: boolean;
 }
 

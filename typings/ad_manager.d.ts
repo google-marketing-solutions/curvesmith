@@ -128,3 +128,22 @@ export declare interface Network {
 export declare interface Targeting {
   inventoryTargeting: InventoryTargeting;
 }
+
+/** Interfaces specific to the PublisherQueryLanguageService. */
+
+export declare interface ColumnType {
+  labelName: string;
+}
+
+export declare interface ResultSet {
+  columnTypes: ColumnType[];
+  rows: Row[];
+}
+
+export declare interface Row {
+  values: Value[];
+}
+
+export declare interface Value {
+  value: boolean | Date | DateTime | number | string | Targeting;
+}

@@ -15,7 +15,11 @@
  * limitations under the License.
  */
 
-import {AdManagerHandler} from './ad_manager_handler';
+import {
+  AdManagerHandler,
+  LineItemDto,
+  LineItemDtoPage,
+} from './ad_manager_handler';
 import {TEST_ONLY} from './curvesmith';
 import {CurveTemplate, GoalType, ScheduledEvent} from './custom_curve';
 import {SheetHandler, SpreadsheetHandler} from './sheet_handler';
@@ -254,7 +258,7 @@ describe('curvesmith', () => {
       adManagerHandlerMock = jasmine.createSpyObj('AdManagerHandler', [
         'getAdUnitIds',
         'getDateString',
-        'getLineItemsByFilter',
+        'getLineItemDtoPage',
       ]);
       adManagerHandlerMock.getAdUnitIds.and.returnValue(['1234', '5678']);
 
@@ -274,12 +278,11 @@ describe('curvesmith', () => {
     });
 
     it('clears any existing line item metadata', () => {
-      const lineItemPage: LineItemPage = {
-        totalResultSetSize: 0,
-        startIndex: 0,
-        results: [],
+      const lineItemDtoPage: LineItemDtoPage = {
+        values: [],
+        endOfResults: true,
       };
-      adManagerHandlerMock.getLineItemsByFilter.and.returnValue(lineItemPage);
+      adManagerHandlerMock.getLineItemDtoPage.and.returnValue(lineItemDtoPage);
 
       loadLineItems(adManagerHandlerMock, sheetHandlerMock);
 
@@ -287,14 +290,12 @@ describe('curvesmith', () => {
     });
 
     it('sets task progress to 100% upon completion', () => {
-      const lineItems: LineItem[] = createLineItemMocks(11);
-      const lineItemPage: LineItemPage = {
-        totalResultSetSize: lineItems.length,
-        startIndex: 0,
-        results: lineItems,
+      const lineItemDtoPage: LineItemDtoPage = {
+        values: createLineItemDtos(11),
+        endOfResults: true,
       };
       adManagerHandlerMock.getDateString.and.returnValue('2024-01-01 00:00:00');
-      adManagerHandlerMock.getLineItemsByFilter.and.returnValue(lineItemPage);
+      adManagerHandlerMock.getLineItemDtoPage.and.returnValue(lineItemDtoPage);
 
       loadLineItems(adManagerHandlerMock, sheetHandlerMock);
 
@@ -311,14 +312,12 @@ describe('curvesmith', () => {
     });
 
     it('writes line item metadata to the sheet', () => {
-      const lineItems: LineItem[] = createLineItemMocks(2);
-      const lineItemPage: LineItemPage = {
-        totalResultSetSize: lineItems.length,
-        startIndex: 0,
-        results: lineItems,
+      const lineItemDtoPage: LineItemDtoPage = {
+        values: createLineItemDtos(2),
+        endOfResults: true,
       };
       adManagerHandlerMock.getDateString.and.returnValue('2024-01-01 00:00:00');
-      adManagerHandlerMock.getLineItemsByFilter.and.returnValue(lineItemPage);
+      adManagerHandlerMock.getLineItemDtoPage.and.returnValue(lineItemDtoPage);
 
       loadLineItems(adManagerHandlerMock, sheetHandlerMock);
 
@@ -338,17 +337,15 @@ describe('curvesmith', () => {
  * @param count The number of mock line items to create.
  * @returns An array of mock LineItem objects.
  */
-function createLineItemMocks(count: number): LineItem[] {
+function createLineItemDtos(count: number): LineItemDto[] {
   return Array.from({length: count}, (_, index) => {
     const lineItemId = index + 1;
-    return jasmine.createSpyObj('LineItem', [], {
+    return {
       id: lineItemId,
       name: `mock-line-item-${lineItemId}`,
-      startDateTime: {},
-      endDateTime: {},
-      primaryGoal: {
-        units: 1000,
-      },
-    });
+      startDate: '2024-01-01 00:00:00',
+      endDate: '2025-01-01 00:00:00',
+      impressionGoal: 1000,
+    };
   });
 }

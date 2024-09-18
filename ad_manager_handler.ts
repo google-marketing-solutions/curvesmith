@@ -48,6 +48,25 @@ export interface LineItemFilter {
 }
 
 /**
+ * Represents the minimum collection of data fields necessary to represent a
+ * line item in the context of custom curve creation. This is a subset of the
+ * fields returned from the Ad Manager API and will be used to populate the
+ * `LINE_ITEMS` named range in the active sheet.
+ */
+export interface LineItemDto {
+  id: number;
+  name: string;
+  startDate: string;
+  endDate: string;
+  impressionGoal: number;
+}
+
+export interface LineItemDtoPage {
+  values: LineItemDto[];
+  endOfResults: boolean;
+}
+
+/**
  * Returns a new Ad Manager client using the OAuth token from the current
  * active user.
  * @param networkId The Ad Manager network ID
@@ -84,12 +103,6 @@ export class AdManagerHandler {
   constructor(readonly client: AdManagerClient) {
     this.serviceCache = new Map<string, AdManagerService>();
   }
-
-  /**
-   * The number of objects to request at a time. This value was empirically
-   * determined to be the optimal tradeoff between UX and performance.
-   */
-  static readonly AD_MANAGER_API_PAGE_LIMIT = 50;
 
   /**
    * Updates each of the provided line items with a custom delivery curve. This
@@ -255,26 +268,23 @@ export class AdManagerHandler {
   }
 
   /**
-   * Retrieves line items that are potential candidates for custom delivery
-   * curves based on the provided filter and offset.
+   * Retrieves metadata for line items that are potential candidates for custom
+   * delivery curves based on the provided filter and offset.
    *
    * Due to performance limitations that arise inherently from using Apps Script
    * along with SOAP object handling, we need to break the request into smaller
    * batches to improve the user experience. The `offset` parameter is used to
    * page through the results.
-   *
-   * Notably the `LineItemPage` that is returned is not the same as the one
-   * returned from Ad Manager because of additional filtering that cannot be
-   * performed in the PQL query. The totalResultSetSize is correct to ensure
-   * proper pagination, but the results array may be filtered.
    * @param filter A collection of settings used to filter line items
    * @param offset The number of lines to skip before returning a batch
-   * @returns An offset page of line items that match the filter
+   * @param limit The number of lines to return in the batch
+   * @returns An offset batch of line items DTOs that match the filter
    */
-  getLineItemsByFilter(
+  getLineItemDtoPage(
     filter: LineItemFilter,
     offset: number,
-  ): ad_manager.LineItemPage {
+    limit: number,
+  ): LineItemDtoPage {
     const whereClause =
       'isArchived = false ' +
       'AND costType = :costType ' +
@@ -284,52 +294,81 @@ export class AdManagerHandler {
       'AND startDateTime <= :startDateTime ';
 
     const statement = new StatementBuilder()
+      .select('Id, Name, StartDateTime, EndDateTime, Targeting, UnitsBought')
+      .from('Line_Item')
       .where(whereClause)
       .withBindVariable('costType', 'CPM')
       .withBindVariable('deliveryRateType', 'AS_FAST_AS_POSSIBLE')
       .withBindVariable('endDateTime', filter.earliestEndDate.toISOString())
       .withBindVariable('lineItemType', 'STANDARD')
       .withBindVariable('startDateTime', filter.latestStartDate.toISOString())
+      .withLimit(limit)
       .withOffset(offset)
-      .withLimit(AdManagerHandler.AD_MANAGER_API_PAGE_LIMIT)
       .toStatement();
 
-    const lineItemService = this.getService('LineItemService');
-    const lineItemPage = lineItemService.performOperation(
-      'getLineItemsByStatement',
+    const pqlService = this.getService('PublisherQueryLanguageService');
+
+    const resultSet = pqlService.performOperation(
+      'select',
       statement,
-    ) as ad_manager.LineItemPage;
+    ) as ad_manager.ResultSet;
+
+    if (!resultSet.rows) {
+      return {
+        values: [],
+        endOfResults: true,
+      };
+    }
 
     const nameRegex = new RegExp(filter.nameFilter, 'i');
     const earliestEndDate = this.getDateTime(filter.earliestEndDate);
 
-    const filteredLineItems = lineItemPage.results.filter((lineItem) => {
+    const lineItemDtos = resultSet.rows.flatMap((row) => {
+      const endDateTime = row.values[3].value as ad_manager.DateTime;
+
       // PQL currently accounts for auto extension days when filtering on End
       // Date, but that feature is incompatible with custom delivery curves.
       // This check ensures that the target date is within the filter range.
-      if (this.compareDateTimes(lineItem.endDateTime, earliestEndDate) < 0) {
-        return false;
+      if (this.compareDateTimes(endDateTime, earliestEndDate) < 0) {
+        return [];
       }
+
+      const lineItemName = row.values[1].value as string;
 
       // PQL supports basic wild card matching (e.g. "LIKE '%foo%'"), but it is
       // insufficient for common client needs; handle client-side instead.
-      if (!nameRegex.test(lineItem.name)) {
-        return false;
+      if (!nameRegex.test(lineItemName)) {
+        return [];
       }
+
+      const targeting = row.values[4].value as ad_manager.Targeting;
 
       // If no ad unit IDs are provided, then skip the targeting check
-      if (filter.adUnitIds.length === 0) {
-        return true;
+      if (filter.adUnitIds.length > 0) {
+        // PQL queries cannot filter on targeting, so handle explicitly here.
+        if (!this.hasTargetedAdUnitMatch(targeting, filter.adUnitIds)) {
+          return [];
+        }
       }
 
-      // PQL queries cannot filter on targeting, so handle explicitly here.
-      return this.hasTargetedAdUnitMatch(lineItem, filter.adUnitIds);
+      const lineItemId = row.values[0].value as number;
+      const startDateTime = row.values[2].value as ad_manager.DateTime;
+      const unitsBought = row.values[5].value as number;
+
+      return [
+        {
+          id: lineItemId,
+          name: lineItemName,
+          startDate: this.getDateString(startDateTime),
+          endDate: this.getDateString(endDateTime),
+          impressionGoal: unitsBought,
+        },
+      ];
     });
 
     return {
-      totalResultSetSize: lineItemPage.totalResultSetSize,
-      startIndex: lineItemPage.startIndex,
-      results: filteredLineItems,
+      values: lineItemDtos,
+      endOfResults: resultSet.rows.length < limit,
     };
   }
 
@@ -337,13 +376,18 @@ export class AdManagerHandler {
    * Retrieves line items from Ad Manager that match the provided IDs.
    * @param ids An array of line item IDs
    * @param offset The number of lines to skip before returning a batch
+   * @param limit The number of lines to return in the batch
    */
-  getLineItemsWithIds(ids: number[], offset: number): ad_manager.LineItemPage {
+  getLineItemsWithIds(
+    ids: number[],
+    offset: number,
+    limit: number,
+  ): ad_manager.LineItemPage {
     const statement = new StatementBuilder()
       .where('id IN (:ids)')
       .withBindVariable('ids', ids)
       .withOffset(offset)
-      .withLimit(AdManagerHandler.AD_MANAGER_API_PAGE_LIMIT)
+      .withLimit(limit)
       .toStatement();
 
     const lineItemService = this.getService('LineItemService');
@@ -456,20 +500,15 @@ export class AdManagerHandler {
   /**
    * Returns true if the provided line item targets at least one of the provided
    * ad unit IDs.
-   * @param lineItem The line item to check
+   * @param targeting The targeting to check for the presence of ad unit IDs
    * @param adUnitIds An array of ad unit IDs
    */
   private hasTargetedAdUnitMatch(
-    lineItem: ad_manager.LineItem,
+    targeting: ad_manager.Targeting,
     adUnitIds: string[],
   ): boolean {
-    const targetedAdUnits =
-      lineItem.targeting.inventoryTargeting?.targetedAdUnits;
+    const targetedAdUnits = targeting.inventoryTargeting?.targetedAdUnits ?? [];
 
-    if (targetedAdUnits) {
-      return targetedAdUnits.some(({adUnitId}) => adUnitIds.includes(adUnitId));
-    }
-
-    return false;
+    return targetedAdUnits.some(({adUnitId}) => adUnitIds.includes(adUnitId));
   }
 }

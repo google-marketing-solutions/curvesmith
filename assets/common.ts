@@ -169,7 +169,11 @@ export class UIElementRenderer extends EventTarget {
       });
 
       this.queryAndExecute<HTMLElement>('.progress-text', (progressText) => {
-        progressText.textContent = `${taskProgress.action}: ${taskProgress.current} of ${taskProgress.total}`;
+        if (taskProgress.action) {
+          progressText.textContent = `${taskProgress.action}: ${taskProgress.current} of ${taskProgress.total}`;
+        } else {
+          progressText.textContent = '';
+        }
       });
     }
   }

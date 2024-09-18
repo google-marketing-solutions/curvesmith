@@ -108,6 +108,12 @@ export function showSidebar(): void {
 }
 
 /**
+ * The number of objects to request at a time. This value was empirically
+ * determined to be the optimal tradeoff between UX and performance.
+ */
+const AD_MANAGER_API_SUGGESTED_PAGE_SIZE = 50;
+
+/**
  * Applies historical delivery pacing to all selected line items within the
  * active sheet.
  */
@@ -158,6 +164,7 @@ function copyTemplate(
 function clearTaskProgress(): void {
   const userProperties = PropertiesService.getUserProperties();
 
+  userProperties.deleteProperty('action');
   userProperties.deleteProperty('current');
   userProperties.deleteProperty('total');
 }
@@ -268,11 +275,15 @@ function getLineItemsWithIds(
   let lineItemPage: ad_manager.LineItemPage;
 
   do {
-    lineItemPage = adManagerHandler.getLineItemsWithIds(lineItemIds, offset);
+    lineItemPage = adManagerHandler.getLineItemsWithIds(
+      lineItemIds,
+      offset,
+      AD_MANAGER_API_SUGGESTED_PAGE_SIZE,
+    );
 
     lineItems.push(...lineItemPage.results);
 
-    offset += am_handler.AdManagerHandler.AD_MANAGER_API_PAGE_LIMIT;
+    offset += AD_MANAGER_API_SUGGESTED_PAGE_SIZE;
   } while (offset < lineItemPage.totalResultSetSize);
 
   return lineItems;
@@ -340,30 +351,34 @@ function loadLineItems(
   sheetHandler.clearLineItems();
 
   let offset = 0;
-  let lineItemPage: ad_manager.LineItemPage;
+  let results: am_handler.LineItemDtoPage;
 
   do {
-    lineItemPage = adManagerHandler.getLineItemsByFilter(filter, offset);
+    results = adManagerHandler.getLineItemDtoPage(
+      filter,
+      offset,
+      AD_MANAGER_API_SUGGESTED_PAGE_SIZE,
+    );
 
     const lineItemRows: LineItemRow[] = [];
 
-    for (const lineItem of lineItemPage.results) {
+    for (const lineItem of results.values) {
       lineItemRows.push({
         selected: false,
         id: lineItem.id,
         name: lineItem.name,
-        startDate: adManagerHandler.getDateString(lineItem.startDateTime),
-        endDate: adManagerHandler.getDateString(lineItem.endDateTime),
-        impressionGoal: lineItem.primaryGoal.units,
+        startDate: lineItem.startDate,
+        endDate: lineItem.endDate,
+        impressionGoal: lineItem.impressionGoal,
       });
     }
 
     sheetHandler.appendLineItems(lineItemRows);
 
-    offset += am_handler.AdManagerHandler.AD_MANAGER_API_PAGE_LIMIT;
+    offset += AD_MANAGER_API_SUGGESTED_PAGE_SIZE;
 
-    setTaskProgress('Retrieved', offset, lineItemPage.totalResultSetSize);
-  } while (offset < lineItemPage.totalResultSetSize);
+    setTaskProgress('Retrieved', offset, offset);
+  } while (!results.endOfResults);
 }
 
 /** Sets the current and total progress values for the active task. */
@@ -478,7 +493,7 @@ function transformAndUploadLineItems(
   transformer: (lineItems: ad_manager.LineItem[]) => void,
   adManagerHandler: am_handler.AdManagerHandler = getAdManagerHandler(),
 ): void {
-  const batchSize = am_handler.AdManagerHandler.AD_MANAGER_API_PAGE_LIMIT;
+  const batchSize = AD_MANAGER_API_SUGGESTED_PAGE_SIZE;
 
   const RETRY_MESSAGE =
     'One or more errors occurred during an upload batch. ' +

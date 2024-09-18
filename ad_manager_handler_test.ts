@@ -18,23 +18,23 @@
 import {AdManagerClient} from 'gam_apps_script/ad_manager_client';
 import {AdManagerService} from 'gam_apps_script/ad_manager_service';
 
-import {AdManagerHandler, LineItemFilter} from './ad_manager_handler';
+import {
+  AdManagerHandler,
+  LineItemDtoPage,
+  LineItemFilter,
+} from './ad_manager_handler';
 import * as ad_manager from './typings/ad_manager';
 
 describe('AdManagerHandler', () => {
   let mockClient: jasmine.SpyObj<AdManagerClient>;
   let mockInventoryService: jasmine.SpyObj<AdManagerService>;
-  let mockLineItemService: jasmine.SpyObj<AdManagerService>;
   let mockNetwork: jasmine.SpyObj<ad_manager.Network>;
   let mockNetworkService: jasmine.SpyObj<AdManagerService>;
+  let mockPqlService: jasmine.SpyObj<AdManagerService>;
 
   beforeEach(() => {
     // Initializes fake client services for testing
     mockInventoryService = jasmine.createSpyObj('AdManagerService', [
-      'performOperation',
-    ]);
-
-    mockLineItemService = jasmine.createSpyObj('AdManagerService', [
       'performOperation',
     ]);
 
@@ -51,16 +51,20 @@ describe('AdManagerHandler', () => {
       .withArgs('getCurrentNetwork')
       .and.returnValue(mockNetwork);
 
+    mockPqlService = jasmine.createSpyObj('AdManagerService', [
+      'performOperation',
+    ]);
+
     mockClient = jasmine.createSpyObj('AdManagerClient', ['getService']);
     mockClient.getService
       .withArgs('InventoryService')
       .and.returnValue(mockInventoryService);
     mockClient.getService
-      .withArgs('LineItemService')
-      .and.returnValue(mockLineItemService);
-    mockClient.getService
       .withArgs('NetworkService')
       .and.returnValue(mockNetworkService);
+    mockClient.getService
+      .withArgs('PublisherQueryLanguageService')
+      .and.returnValue(mockPqlService);
   });
 
   describe('.getAdUnitIds', () => {
@@ -124,83 +128,76 @@ describe('AdManagerHandler', () => {
     });
   });
 
-  describe('.getLineItemsByFilter', () => {
-    let mockLine1AdUnit1234: jasmine.SpyObj<ad_manager.LineItem>;
-    let mockLine2AdUnit1234: jasmine.SpyObj<ad_manager.LineItem>;
-    let mockLineAdUnit5678: jasmine.SpyObj<ad_manager.LineItem>;
+  describe('.getLineItemDtoPage', () => {
+    const columnTypes: ad_manager.ColumnType[] = [
+      {labelName: 'id'},
+      {labelName: 'name'},
+      {labelName: 'startDateTime'},
+      {labelName: 'endDateTime'},
+      {labelName: 'targeting'},
+      {labelName: 'unitsBought'},
+    ];
+
+    // Our focus here will be testing any post-processing of the results, not
+    // the actual Ad Manager API calls, so we'll always return the same fake
+    // data and validate that the results are filtered as expected.
+    const row1AdUnit1234 = createFakeRowForResultSet(
+      /* id= */ 1,
+      /* name= */ 'Line Item 1',
+      /* endDate= */ {
+        year: 2025,
+        month: 1,
+        day: 1,
+      },
+      /* adUnitId = */ '1234',
+    );
+    const row2AdUnit1234 = createFakeRowForResultSet(
+      /* id= */ 2,
+      /* name= */ 'Line Item 2 (ROS)',
+      /* endDate= */ {
+        year: 2025,
+        month: 1,
+        day: 1,
+      },
+      /* adUnitId = */ '1234',
+    );
+    const row3AdUnit5678 = createFakeRowForResultSet(
+      /* id= */ 3,
+      /* name= */ 'Line Item 3 - ROS',
+      /* endDate= */ {
+        year: 2025,
+        month: 1,
+        day: 1,
+      },
+      /* adUnitId = */ '5678',
+    );
+    // Simulate line item returned because of grace period.
+    const row4AdUnit1234Grace = createFakeRowForResultSet(
+      /* id= */ 4,
+      /* name= */ 'Line Item 4 - Grace Period',
+      /* endDate= */ {
+        year: 2024,
+        month: 31,
+        day: 12,
+      },
+      /* adUnitId = */ '1234',
+    );
 
     beforeEach(() => {
-      // Our focus here will be testing any post-processing of the results, not
-      // the actual Ad Manager API calls, so we'll always return the same fake
-      // data and validate that the results are filtered as expected.
-      mockLine1AdUnit1234 = jasmine.createSpyObj('LineItem', [], {
-        name: 'Line Item 1',
-        endDateTime: {
-          date: {
-            year: 2026,
-            month: 1,
-            day: 1,
-          },
-          hour: 0,
-          minute: 0,
-          second: 0,
-          timeZoneId: 'America/Los_Angeles',
-        },
-        targeting: {
-          inventoryTargeting: {
-            targetedAdUnits: [{adUnitId: '1234'}],
-          },
-        },
-      });
-      mockLine2AdUnit1234 = jasmine.createSpyObj('LineItem', [], {
-        name: 'Line Item 2 (ROS)',
-        endDateTime: {
-          date: {
-            year: 2026,
-            month: 1,
-            day: 1,
-          },
-          hour: 0,
-          minute: 0,
-          second: 0,
-          timeZoneId: 'America/Los_Angeles',
-        },
-        targeting: {
-          inventoryTargeting: {
-            targetedAdUnits: [{adUnitId: '1234'}],
-          },
-        },
-      });
-      mockLineAdUnit5678 = jasmine.createSpyObj('LineItem', [], {
-        name: 'Line Item 3 - ROS',
-        endDateTime: {
-          date: {
-            year: 2026,
-            month: 1,
-            day: 1,
-          },
-          hour: 0,
-          minute: 0,
-          second: 0,
-          timeZoneId: 'America/Los_Angeles',
-        },
-        targeting: {
-          inventoryTargeting: {
-            targetedAdUnits: [{adUnitId: '5678'}],
-          },
-        },
-      });
-
-      const lineItemPageFake: ad_manager.LineItemPage = {
-        results: [mockLine1AdUnit1234, mockLine2AdUnit1234, mockLineAdUnit5678],
-        startIndex: 0,
-        totalResultSetSize: 3,
+      const lineItemDtoPage: ad_manager.ResultSet = {
+        columnTypes,
+        rows: [
+          row1AdUnit1234,
+          row2AdUnit1234,
+          row3AdUnit5678,
+          row4AdUnit1234Grace,
+        ],
       };
 
-      mockLineItemService.performOperation.and.returnValue(lineItemPageFake);
+      mockPqlService.performOperation.and.returnValue(lineItemDtoPage);
     });
 
-    it('cache the LineItemService upon first call', () => {
+    it('cache the PqlService upon first call', () => {
       const lineItemFilter: LineItemFilter = {
         adUnitIds: ['1234'],
         latestStartDate: new Date('2024-01-01 00:00:00'),
@@ -210,73 +207,74 @@ describe('AdManagerHandler', () => {
       const adManagerHandler = new AdManagerHandler(mockClient);
 
       // The first call should cache the LineItemService.
-      adManagerHandler.getLineItemsByFilter(lineItemFilter, 0);
+      adManagerHandler.getLineItemDtoPage(lineItemFilter, 0, 1);
       // The second call should use the cached LineItemService.
-      adManagerHandler.getLineItemsByFilter(lineItemFilter, 1);
+      adManagerHandler.getLineItemDtoPage(lineItemFilter, 1, 1);
 
-      const serviceNames = mockClient.getService.calls.allArgs().map(
-        (args) => args[0],
-      );
-      expect(serviceNames.filter(x => x === 'LineItemService').length).toBe(1);
+      const serviceNames = mockClient.getService.calls
+        .allArgs()
+        .map((args) => args[0]);
+      expect(
+        serviceNames.filter((x) => x === 'PublisherQueryLanguageService')
+          .length,
+      ).toBe(1);
     });
 
     it('filters line items with end dates that are too early', () => {
-      // Simulate line item returned because of grace period.
-      mockLineAdUnit5678.endDateTime.date = {
-        year: 2024,
-        month: 12,
-        day: 31,
-      };
-      const adUnitIds: string[] = [];
+      const lineItemDtoPage = getLineItemsByAdUnitFilter(mockClient, []);
 
-      const lineItemPage = getLineItemsByAdUnitFilter(mockClient, adUnitIds);
-
-      expect(lineItemPage.results).toEqual([
-        mockLine1AdUnit1234,
-        mockLine2AdUnit1234,
+      // Row 4 should be filtered out because its end date is too early.
+      expect(lineItemDtoPage.values).toEqual([
+        jasmine.objectContaining({id: row1AdUnit1234.values[0].value}),
+        jasmine.objectContaining({id: row2AdUnit1234.values[0].value}),
+        jasmine.objectContaining({id: row3AdUnit5678.values[0].value}),
       ]);
     });
 
     it('returns an empty array if no line items match', () => {
       const adUnitIds = ['9999'];
 
-      const lineItemPage = getLineItemsByAdUnitFilter(mockClient, adUnitIds);
+      const lineItemDtoPage = getLineItemsByAdUnitFilter(mockClient, adUnitIds);
 
-      expect(lineItemPage.results).toEqual([]);
+      expect(lineItemDtoPage.values).toEqual([]);
     });
 
     it('returns the full results if no ad unit ID is provided', () => {
       const adUnitIds: string[] = [];
 
-      const lineItemPage = getLineItemsByAdUnitFilter(mockClient, adUnitIds);
+      const lineItemDtoPage = getLineItemsByAdUnitFilter(mockClient, adUnitIds);
 
-      expect(lineItemPage.results).toEqual([
-        mockLine1AdUnit1234,
-        mockLine2AdUnit1234,
-        mockLineAdUnit5678,
+      // Row 4 should be filtered out because its end date is too early.
+      expect(lineItemDtoPage.values).toEqual([
+        jasmine.objectContaining({id: row1AdUnit1234.values[0].value}),
+        jasmine.objectContaining({id: row2AdUnit1234.values[0].value}),
+        jasmine.objectContaining({id: row3AdUnit5678.values[0].value}),
       ]);
     });
 
     it('returns line items that match any of the provided ad unit IDs', () => {
       const adUnitIds = ['1234', '5678'];
 
-      const lineItemPage = getLineItemsByAdUnitFilter(mockClient, adUnitIds);
+      const lineItemDtoPage = getLineItemsByAdUnitFilter(mockClient, adUnitIds);
 
-      expect(lineItemPage.results).toEqual([
-        mockLine1AdUnit1234,
-        mockLine2AdUnit1234,
-        mockLineAdUnit5678,
+      // Row 4 should be filtered out because its end date is too early.
+      expect(lineItemDtoPage.values).toEqual([
+        jasmine.objectContaining({id: row1AdUnit1234.values[0].value}),
+        jasmine.objectContaining({id: row2AdUnit1234.values[0].value}),
+        jasmine.objectContaining({id: row3AdUnit5678.values[0].value}),
       ]);
     });
 
     it('returns line items that match the provided ad unit ID', () => {
       const adUnitIds = ['1234'];
 
-      const lineItemPage = getLineItemsByAdUnitFilter(mockClient, adUnitIds);
+      const lineItemDtoPage = getLineItemsByAdUnitFilter(mockClient, adUnitIds);
 
-      expect(lineItemPage.results).toEqual([
-        mockLine1AdUnit1234,
-        mockLine2AdUnit1234,
+      // Row 3 should be filtered out because it targets a different ad unit.
+      // Row 4 should be filtered out because its end date is too early.
+      expect(lineItemDtoPage.values).toEqual([
+        jasmine.objectContaining({id: row1AdUnit1234.values[0].value}),
+        jasmine.objectContaining({id: row2AdUnit1234.values[0].value}),
       ]);
     });
 
@@ -289,24 +287,71 @@ describe('AdManagerHandler', () => {
       };
       const adManagerHandler = new AdManagerHandler(mockClient);
 
-      const lineItemPage = adManagerHandler.getLineItemsByFilter(
+      const lineItemDtoPage = adManagerHandler.getLineItemDtoPage(
         lineItemFilter,
         0,
+        100,
       );
 
-      expect(lineItemPage.results).toEqual([
-        mockLine2AdUnit1234,
-        mockLineAdUnit5678,
+      expect(lineItemDtoPage.values).toEqual([
+        jasmine.objectContaining({name: row2AdUnit1234.values[1].value}),
+        jasmine.objectContaining({name: row3AdUnit5678.values[1].value}),
       ]);
     });
   });
 });
 
-/** Helper function to get the results of a call to `getLineItemsByFilter`. */
+function createFakeRowForResultSet(
+  id: number,
+  name: string,
+  endDate: ad_manager.Date,
+  adUnitId: string,
+): ad_manager.Row {
+  return {
+    values: [
+      {/* id= */ value: id},
+      {/* name= */ value: name},
+      {
+        /* startDateTime= */ value: {
+          date: {
+            year: 2024,
+            month: 1,
+            day: 1,
+          },
+          hour: 0,
+          minute: 0,
+          second: 0,
+          timeZoneId: 'America/Los_Angeles',
+        },
+      },
+      {
+        /* endDateTime= */ value: {
+          date: endDate,
+          hour: 0,
+          minute: 0,
+          second: 0,
+          timeZoneId: 'America/Los_Angeles',
+        },
+      },
+      {
+        /* targeting= */ value: {
+          inventoryTargeting: {
+            targetedAdUnits: [{adUnitId: adUnitId}],
+          },
+        },
+      },
+      {
+        /* unitsBought= */ value: 1000,
+      },
+    ],
+  };
+}
+
+/** Helper function to get the results of a call to `getLineItemDtoPage`. */
 function getLineItemsByAdUnitFilter(
   client: AdManagerClient,
   adUnitIds: string[],
-): ad_manager.LineItemPage {
+): LineItemDtoPage {
   const adManagerHandler = new AdManagerHandler(client);
 
   // Both dates are irrelevant because they are PQL arguments and we are mocking
@@ -318,5 +363,5 @@ function getLineItemsByAdUnitFilter(
     nameFilter: '',
   };
 
-  return adManagerHandler.getLineItemsByFilter(lineItemFilter, 0);
+  return adManagerHandler.getLineItemDtoPage(lineItemFilter, 0, 100);
 }
