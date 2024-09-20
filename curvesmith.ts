@@ -48,6 +48,8 @@ const CALLBACK_FUNCTIONS: {[id: string]: (...args: any[]) => any} = {
   'initializeSpreadsheet': initializeSpreadsheet,
 };
 
+const SCRIPT_VERSION = '0.0.1';
+
 /**
  * Calls the specified callback function with the provided arguments.
  * @throws An error if the function is not a callable.
@@ -75,7 +77,7 @@ export function onEdit(event: GoogleAppsScript.Events.SheetsOnEdit): void {
  */
 export function onOpen(): void {
   SpreadsheetApp.getUi()
-    .createMenu('Custom Curves')
+    .createMenu('Custom Curves [' + SCRIPT_VERSION + ']')
     .addItem('Load Sidebar', 'showSidebar')
     .addToUi();
 }
