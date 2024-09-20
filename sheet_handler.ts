@@ -104,12 +104,20 @@ export class SheetHandler {
 
   /** Clears all line item content from the associated sheet. */
   clearLineItems() {
+    // Delete line item metadata
     const lineItemsRange = this.getNamedRange(
       SheetHandler.NAMED_RANGE_LINE_ITEMS,
     ).getRange();
 
     lineItemsRange.clearContent();
     lineItemsRange.removeCheckboxes();
+
+    // Uncheck the "Select All" checkbox
+    const selectAllRange = this.getNamedRange(
+      SheetHandler.NAMED_RANGE_SELECT_ALL,
+    ).getRange();
+
+    selectAllRange.setValues([[false]]);
   }
 
   /**
