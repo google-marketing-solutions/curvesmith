@@ -34,6 +34,7 @@ import {AdManagerServerFault} from 'gam_apps_script/ad_manager_error';
 const CALLBACK_FUNCTIONS: {[id: string]: (...args: any[]) => any} = {
   /* Server Features */
   'applyHistorical': applyHistorical,
+  'beginLoadLineItems': beginLoadLineItems,
   'copyTemplate': copyTemplate,
   'loadLineItems': loadLineItems,
   'showPreviewDialog': showPreviewDialog,
@@ -332,14 +333,21 @@ function initializeSpreadsheet(): void {
 }
 
 /**
- * Retrieves line items from Ad Manager and writes pertitent metadata to the
- * active sheet. We limit line items to only those that meet the requirements
- * for custom delivery curves, including flight date range and ad unit ID.
+ * Offers the user the option of loading line items from the Ad Manager API
+ * and overwriting the active sheet. We limit line items to only those lines
+ * that meet the requirements for custom delivery curves, including flight date
+ * range, name filter, and ad unit ID.
+ *
+ * Parsing SOAP objects returned by the Ad Manager API is prohibitively slow, so
+ * line items are requested concurrently and processed in batches. This function
+ * returns the total number of line items that match the current filter
+ * criteria, however, the actual line items requests are kicked off in parallel
+ * by the sidebar UI.
  */
-function loadLineItems(
+function beginLoadLineItems(
   adManagerHandler: am_handler.AdManagerHandler = getAdManagerHandler(),
   sheetHandler: SheetHandler = getSheetHandler(),
-): void {
+): number {
   const WARNING_MESSAGE =
     'Loading line items will overwrite line item data in the active sheet. ' +
     'All other data will be unaffected. Are you sure you want to proceed?';
@@ -348,39 +356,92 @@ function loadLineItems(
     throw new Error('User cancelled loading line items');
   }
 
-  const filter = getLineItemFilter(adManagerHandler, sheetHandler);
-
   sheetHandler.clearLineItems();
 
-  let offset = 0;
-  let results: am_handler.LineItemDtoPage;
+  const filter = getLineItemFilter(adManagerHandler, sheetHandler);
 
-  do {
-    results = adManagerHandler.getLineItemDtoPage(
-      filter,
-      offset,
-      AD_MANAGER_API_SUGGESTED_PAGE_SIZE,
-    );
+  const lineItemCount = adManagerHandler.getLineItemCount(filter);
 
-    const lineItemRows: LineItemRow[] = [];
+  if (lineItemCount === 0) {
+    throw new Error('No suitable line items found');
+  }
 
-    for (const lineItem of results.values) {
+  setTaskProgress('Retrieved', 0, lineItemCount);
+
+  return lineItemCount;
+}
+
+/**
+ * Retrieves line items from the Ad Manager API and caches them in the script
+ * properties cache. Once all expected line items have been cached, the line
+ * item metadata is written to the active sheet.
+ * @param offset The offset to use for the request
+ * @param limit The number of line items to request
+ */
+function loadLineItems(
+  offset: number,
+  limit: number,
+  adManagerHandler: am_handler.AdManagerHandler = getAdManagerHandler(),
+  sheetHandler: SheetHandler = getSheetHandler(),
+): void {
+  const filter = getLineItemFilter(adManagerHandler, sheetHandler);
+
+  const lineItemDtoPage = adManagerHandler.getLineItemDtoPage(
+    filter,
+    offset,
+    limit,
+  );
+
+  const scriptProperties = PropertiesService.getScriptProperties();
+
+  scriptProperties.setProperty(
+    'lineItemDtoPage' + offset,
+    JSON.stringify(lineItemDtoPage.values),
+  );
+
+  const keys = scriptProperties.getKeys();
+
+  const validKeys = keys.filter((key) => key.startsWith('lineItemDtoPage'));
+
+  const taskProgress = getTaskProgress();
+
+  setTaskProgress('Retrieved', validKeys.length * limit, taskProgress.total);
+
+  if (validKeys.length === Math.ceil(taskProgress.total / limit)) {
+    writeLineItemMetadata(validKeys, sheetHandler);
+  }
+}
+
+/**
+ * Writes line item metadata to the active sheet.
+ * @param cacheKeys The keys of the script properties to read
+ */
+function writeLineItemMetadata(
+  cacheKeys: string[],
+  sheetHandler: SheetHandler = getSheetHandler(),
+): void {
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const lineItemRows: LineItemRow[] = [];
+
+  for (const key of cacheKeys) {
+    const serializedDtos = scriptProperties.getProperty(key) ?? '';
+    const lineItemDtos = JSON.parse(serializedDtos) as am_handler.LineItemDto[];
+
+    for (const lineItemDto of lineItemDtos) {
       lineItemRows.push({
         selected: false,
-        id: lineItem.id,
-        name: lineItem.name,
-        startDate: lineItem.startDate,
-        endDate: lineItem.endDate,
-        impressionGoal: lineItem.impressionGoal,
+        id: lineItemDto.id,
+        name: lineItemDto.name,
+        startDate: lineItemDto.startDate,
+        endDate: lineItemDto.endDate,
+        impressionGoal: lineItemDto.impressionGoal,
       });
     }
 
-    sheetHandler.appendLineItems(lineItemRows);
+    scriptProperties.deleteProperty(key);
+  }
 
-    offset += AD_MANAGER_API_SUGGESTED_PAGE_SIZE;
-
-    setTaskProgress('Retrieved', offset, offset);
-  } while (!results.endOfResults);
+  sheetHandler.appendLineItems(lineItemRows);
 }
 
 /** Sets the current and total progress values for the active task. */
@@ -587,9 +648,11 @@ global.include = include;
 global.showSidebar = showSidebar;
 
 export const TEST_ONLY = {
+  beginLoadLineItems,
   copyTemplate,
   getAdManagerHandler,
   getLineItemPreviews,
   getTaskProgress,
   loadLineItems,
+  setTaskProgress,
 };

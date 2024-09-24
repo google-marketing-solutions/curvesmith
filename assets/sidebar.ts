@@ -121,12 +121,31 @@ export function copyTemplate() {
 export function loadLineItems() {
   renderer.beginTask('Retrieving line items, please wait...');
 
+  const PAGE_SIZE = 50; // Number of line items to request per page
+
+  let oneOrMoreFailures = false;
+  let taskCompletionCount = 0;
+
   google.script.run
-    .withSuccessHandler(() =>
-      renderer.finishTaskWithSuccess('Line items retrieved.'),
-    )
+    .withSuccessHandler((totalLineItemCount: number) => {
+      const requests = Math.ceil(totalLineItemCount / PAGE_SIZE);
+
+      for (let i = 0; i < requests; i++) {
+        google.script.run
+          .withSuccessHandler(() => {
+            if (!oneOrMoreFailures && ++taskCompletionCount === requests) {
+              renderer.finishTaskWithSuccess('Line items retrieved.');
+            }
+          })
+          .withFailureHandler((e) => {
+            oneOrMoreFailures = true;
+            renderer.finishTaskWithFailure(e);
+          })
+          ['callback']('loadLineItems', [i * PAGE_SIZE, PAGE_SIZE]);
+      }
+    })
     .withFailureHandler((e) => renderer.finishTaskWithFailure(e))
-    ['callback']('loadLineItems');
+    ['callback']('beginLoadLineItems');
 }
 
 export function showPreviewDialog() {

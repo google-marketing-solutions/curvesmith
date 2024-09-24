@@ -23,14 +23,15 @@ import {
 import {TEST_ONLY} from './curvesmith';
 import {CurveTemplate, GoalType, ScheduledEvent} from './custom_curve';
 import {SheetHandler, SpreadsheetHandler} from './sheet_handler';
-import {LineItem, LineItemPage} from './typings/ad_manager';
 
 const {
   copyTemplate,
   getAdManagerHandler,
+  beginLoadLineItems,
   getLineItemPreviews,
   getTaskProgress,
   loadLineItems,
+  setTaskProgress,
 } = TEST_ONLY;
 
 describe('curvesmith', () => {
@@ -45,12 +46,16 @@ describe('curvesmith', () => {
     // available. This creates a mock that uses a Map as a backing store.
     propertiesMock = jasmine.createSpyObj('Properties', [
       'deleteProperty',
+      'getKeys',
       'getProperty',
       'setProperty',
     ]);
     propertiesMock.deleteProperty.and.callFake((key: string) => {
       propertiesFake.delete(key);
       return propertiesMock;
+    });
+    propertiesMock.getKeys.and.callFake(() => {
+      return [...propertiesFake.keys()];
     });
     propertiesMock.getProperty.and.callFake((key: string) => {
       return propertiesFake.get(key) ?? null;
@@ -60,8 +65,10 @@ describe('curvesmith', () => {
       return propertiesMock;
     });
     propertiesServiceMock = jasmine.createSpyObj('PropertiesService', [
+      'getScriptProperties',
       'getUserProperties',
     ]);
+    propertiesServiceMock.getScriptProperties.and.returnValue(propertiesMock);
     propertiesServiceMock.getUserProperties.and.returnValue(propertiesMock);
 
     // Similarly, SpreadsheetApp is unavailable outside of the Apps Script
@@ -258,9 +265,11 @@ describe('curvesmith', () => {
       adManagerHandlerMock = jasmine.createSpyObj('AdManagerHandler', [
         'getAdUnitIds',
         'getDateString',
+        'getLineItemCount',
         'getLineItemDtoPage',
       ]);
       adManagerHandlerMock.getAdUnitIds.and.returnValue(['1234', '5678']);
+      adManagerHandlerMock.getLineItemCount.and.returnValue(1);
 
       sheetHandlerMock = jasmine.createSpyObj('SheetHandler', [
         'appendLineItems',
@@ -284,7 +293,7 @@ describe('curvesmith', () => {
       };
       adManagerHandlerMock.getLineItemDtoPage.and.returnValue(lineItemDtoPage);
 
-      loadLineItems(adManagerHandlerMock, sheetHandlerMock);
+      beginLoadLineItems(adManagerHandlerMock, sheetHandlerMock);
 
       expect(sheetHandlerMock.clearLineItems).toHaveBeenCalled();
     });
@@ -296,8 +305,9 @@ describe('curvesmith', () => {
       };
       adManagerHandlerMock.getDateString.and.returnValue('2024-01-01 00:00:00');
       adManagerHandlerMock.getLineItemDtoPage.and.returnValue(lineItemDtoPage);
+      setTaskProgress('Fake', 0, lineItemDtoPage.values.length);
 
-      loadLineItems(adManagerHandlerMock, sheetHandlerMock);
+      loadLineItems(0, 50, adManagerHandlerMock, sheetHandlerMock);
 
       const taskProgress = getTaskProgress();
       expect(taskProgress.current / taskProgress.total).toBe(1);
@@ -307,7 +317,7 @@ describe('curvesmith', () => {
       sheetHandlerMock.getScheduledEvents.and.returnValue([]);
 
       expect(() => {
-        loadLineItems(adManagerHandlerMock, sheetHandlerMock);
+        beginLoadLineItems(adManagerHandlerMock, sheetHandlerMock);
       }).toThrowError('No scheduled events are specified');
     });
 
@@ -318,9 +328,11 @@ describe('curvesmith', () => {
       };
       adManagerHandlerMock.getDateString.and.returnValue('2024-01-01 00:00:00');
       adManagerHandlerMock.getLineItemDtoPage.and.returnValue(lineItemDtoPage);
+      setTaskProgress('Fake', 0, lineItemDtoPage.values.length);
 
-      loadLineItems(adManagerHandlerMock, sheetHandlerMock);
+      loadLineItems(0, 50, adManagerHandlerMock, sheetHandlerMock);
 
+      // Will write to the sheet because all pages have been loaded
       expect(sheetHandlerMock.appendLineItems).toHaveBeenCalledWith([
         jasmine.objectContaining({id: 1, name: 'mock-line-item-1'}),
         jasmine.objectContaining({id: 2, name: 'mock-line-item-2'}),

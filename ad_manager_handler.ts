@@ -268,6 +268,25 @@ export class AdManagerHandler {
   }
 
   /**
+   * Returns the total number of line items that match the provided filter.
+   * @param filter A collection of settings used to filter line items
+   */
+  getLineItemCount(filter: LineItemFilter): number {
+    const statement = this.getLineItemStatementBuilderForFilter(filter)
+      .withLimit(1)
+      .withOffset(0)
+      .toStatement();
+
+    const lineItemService = this.getService('LineItemService');
+    const lineItemPage = lineItemService.performOperation(
+      'getLineItemsByStatement',
+      statement,
+    ) as ad_manager.LineItemPage;
+
+    return lineItemPage.totalResultSetSize;
+  }
+
+  /**
    * Retrieves metadata for line items that are potential candidates for custom
    * delivery curves based on the provided filter and offset.
    *
@@ -285,29 +304,14 @@ export class AdManagerHandler {
     offset: number,
     limit: number,
   ): LineItemDtoPage {
-    const whereClause =
-      'isArchived = false ' +
-      'AND costType = :costType ' +
-      'AND deliveryRateType <> :deliveryRateType ' +
-      'AND endDateTime >= :endDateTime ' +
-      'AND lineItemType = :lineItemType ' +
-      'AND startDateTime <= :startDateTime ';
-
-    const statement = new StatementBuilder()
+    const statement = this.getLineItemStatementBuilderForFilter(filter)
       .select('Id, Name, StartDateTime, EndDateTime, Targeting, UnitsBought')
       .from('Line_Item')
-      .where(whereClause)
-      .withBindVariable('costType', 'CPM')
-      .withBindVariable('deliveryRateType', 'AS_FAST_AS_POSSIBLE')
-      .withBindVariable('endDateTime', filter.earliestEndDate.toISOString())
-      .withBindVariable('lineItemType', 'STANDARD')
-      .withBindVariable('startDateTime', filter.latestStartDate.toISOString())
       .withLimit(limit)
       .withOffset(offset)
       .toStatement();
 
     const pqlService = this.getService('PublisherQueryLanguageService');
-
     const resultSet = pqlService.performOperation(
       'select',
       statement,
@@ -495,6 +499,31 @@ export class AdManagerHandler {
     }
 
     return service;
+  }
+
+  /**
+   * Returns a `StatementBuilder` with the appropriate filters for retrieving
+   * line items from Ad Manager.
+   * @param filter A collection of settings used to filter line items
+   */
+  private getLineItemStatementBuilderForFilter(
+    filter: LineItemFilter,
+  ): StatementBuilder {
+    const whereClause =
+      'isArchived = false ' +
+      'AND costType = :costType ' +
+      'AND deliveryRateType <> :deliveryRateType ' +
+      'AND endDateTime >= :endDateTime ' +
+      'AND lineItemType = :lineItemType ' +
+      'AND startDateTime <= :startDateTime ';
+
+    return new StatementBuilder()
+      .where(whereClause)
+      .withBindVariable('costType', 'CPM')
+      .withBindVariable('deliveryRateType', 'AS_FAST_AS_POSSIBLE')
+      .withBindVariable('endDateTime', filter.earliestEndDate.toISOString())
+      .withBindVariable('lineItemType', 'STANDARD')
+      .withBindVariable('startDateTime', filter.latestStartDate.toISOString());
   }
 
   /**
