@@ -441,7 +441,7 @@ function writeLineItemMetadata(
     scriptProperties.deleteProperty(key);
   }
 
-  sheetHandler.appendLineItems(lineItemRows);
+  sheetHandler.writeLineItems(lineItemRows);
 }
 
 /** Sets the current and total progress values for the active task. */

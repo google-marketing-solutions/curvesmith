@@ -19,8 +19,8 @@
  * @fileoverview Handles interactions with a sheet in the active spreadsheet.
  */
 
-import {CurveTemplate, GoalType, ScheduledEvent} from './custom_curve';
 import {LineItemDto} from './ad_manager_handler';
+import {CurveTemplate, GoalType, ScheduledEvent} from './custom_curve';
 
 /** Represents a single row of line item metadata within a sheet. */
 export interface LineItemRow extends LineItemDto {
@@ -53,54 +53,6 @@ export class SheetHandler {
   static readonly NAMED_RANGE_SELECT_ALL = 'SELECT_ALL';
 
   constructor(readonly sheet: GoogleAppsScript.Spreadsheet.Sheet) {}
-
-  /**
-   * Appends line item rows to the associated sheet within the designated named
-   * range (`LINE_ITEMS`). Existing data will be preserved and, if necessary,
-   * the named range will be expanded to accommodate the new data.
-   * @param lineItems The line items to write to the sheet
-   * @return The row index (1-based) where the new data was written
-   */
-  appendLineItems(lineItems: LineItemRow[]): number | undefined {
-    if (lineItems.length > 0) {
-      const namedRange = this.getNamedRange(
-        SheetHandler.NAMED_RANGE_LINE_ITEMS,
-      );
-
-      const appendRange = this.getAppendRange(namedRange, lineItems.length);
-
-      const lineItemValues = lineItems.map((lineItem) => [
-        /* selected= */ false,
-        /* id= */ lineItem.id,
-        /* name= */ lineItem.name,
-        /* startDate= */ lineItem.startDate,
-        /* endDate= */ lineItem.endDate,
-        /* impressionGoal= */ lineItem.impressionGoal,
-      ]);
-
-      const selectedColumnRange = this.sheet.getRange(
-        /* row= */ appendRange.getRow(),
-        /* column= */ appendRange.getColumn(),
-        /* numRows= */ appendRange.getNumRows(),
-        /* numColumns= */ 1,
-      );
-
-      // Add checkboxes to the "Selected" column
-      const dataValidation = SpreadsheetApp.newDataValidation()
-        .requireCheckbox()
-        .setAllowInvalid(false)
-        .setHelpText('The value of this cell must be true or false')
-        .build();
-
-      selectedColumnRange.setDataValidation(dataValidation);
-
-      this.expandNamedRange(namedRange, lineItems.length);
-
-      return appendRange.setValues(lineItemValues).getRow();
-    }
-
-    return undefined;
-  }
 
   /** Clears all line item content from the associated sheet. */
   clearLineItems() {
@@ -269,60 +221,58 @@ export class SheetHandler {
   }
 
   /**
-   * Increases the size of the named range by the provided number of rows.
-   * @param namedRange The named range to be modified
-   * @param rowCount The number of rows to increase by
+   * Writes line item rows to the associated sheet within the designated named
+   * range (`LINE_ITEMS`). Any existing data will be overwritten, so it is
+   * recommended to use this function in conjunction with `clearLineItems` to
+   * ensure that no stale data is present.
+   * @param lineItems The line items to write to the sheet
    */
-  private expandNamedRange(
-    namedRange: GoogleAppsScript.Spreadsheet.NamedRange,
-    rowCount: number,
-  ) {
-    this.sheet.insertRows(namedRange.getRange().getLastRow(), rowCount);
+  writeLineItems(lineItems: LineItemRow[]): void {
+    if (lineItems.length > 0) {
+      const lineItemValues = lineItems.map((lineItem) => [
+        /* selected= */ false,
+        /* id= */ lineItem.id,
+        /* name= */ lineItem.name,
+        /* startDate= */ lineItem.startDate,
+        /* endDate= */ lineItem.endDate,
+        /* impressionGoal= */ lineItem.impressionGoal,
+      ]);
 
-    const range = namedRange.getRange();
-
-    const largerNamedRange = this.sheet.getRange(
-      /* row= */ range.getRow(),
-      /* column= */ range.getColumn(),
-      /* numRows= */ range.getNumRows() + rowCount,
-      /* numColumns= */ range.getNumColumns(),
-    );
-
-    namedRange.setRange(largerNamedRange);
-  }
-
-  /**
-   * Given a named range, identifies the first empty row and returns a sub-range
-   * where the provided number of rows (e.g. `count`) should be appended. If the
-   * named range is already fully populated, then it will be expanded by the
-   * provided number of rows.
-   * @param namedRange The named range that will receive new rows
-   * @param count The number of rows that will be appended
-   */
-  private getAppendRange(
-    namedRange: GoogleAppsScript.Spreadsheet.NamedRange,
-    count: number,
-  ): GoogleAppsScript.Spreadsheet.Range {
-    const range = namedRange.getRange();
-    const values = range.getValues();
-
-    // Find the index of the first empty row
-    const emptyRowIndex = values.findIndex((r) => r.every((c) => !c));
-
-    if (emptyRowIndex < 0) {
-      return this.sheet.getRange(
-        /* row= */ range.getLastRow() + 1,
-        /* column= */ range.getColumn(),
-        /* numRows= */ count,
-        /* numColumns= */ range.getNumColumns(),
+      const namedRange = this.getNamedRange(
+        SheetHandler.NAMED_RANGE_LINE_ITEMS,
       );
-    } else {
-      return this.sheet.getRange(
-        /* row= */ range.getRow() + emptyRowIndex,
-        /* column= */ range.getColumn(),
-        /* numRows= */ count,
-        /* numColumns= */ range.getNumColumns(),
+
+      const lineItemRange = namedRange.getRange();
+
+      const writeRange = this.sheet.getRange(
+        /* row= */ lineItemRange.getRow(),
+        /* column= */ lineItemRange.getColumn(),
+        /* numRows= */ lineItems.length,
+        /* numColumns= */ lineItemRange.getNumColumns(),
       );
+
+      writeRange.setValues(lineItemValues);
+
+      // Add checkboxes to the "Selected" column
+      const selectedColumnRange = this.sheet.getRange(
+        /* row= */ writeRange.getRow(),
+        /* column= */ writeRange.getColumn(),
+        /* numRows= */ writeRange.getNumRows(),
+        /* numColumns= */ 1,
+      );
+
+      const dataValidation = SpreadsheetApp.newDataValidation()
+        .requireCheckbox()
+        .setAllowInvalid(false)
+        .setHelpText('The value of this cell must be true or false')
+        .build();
+
+      selectedColumnRange.setDataValidation(dataValidation);
+
+      // Ensure that the named range includes the new data.
+      if (lineItemRange.getNumRows() < lineItems.length) {
+        namedRange.setRange(writeRange);
+      }
     }
   }
 

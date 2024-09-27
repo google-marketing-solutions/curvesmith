@@ -272,11 +272,11 @@ describe('curvesmith', () => {
       adManagerHandlerMock.getLineItemCount.and.returnValue(1);
 
       sheetHandlerMock = jasmine.createSpyObj('SheetHandler', [
-        'appendLineItems',
         'clearLineItems',
         'getAdUnitId',
         'getNameFilter',
         'getScheduledEvents',
+        'writeLineItems',
       ]);
       sheetHandlerMock.getAdUnitId.and.returnValue('1234');
       sheetHandlerMock.getNameFilter.and.returnValue('');
@@ -333,7 +333,7 @@ describe('curvesmith', () => {
       loadLineItems(0, 50, adManagerHandlerMock, sheetHandlerMock);
 
       // Will write to the sheet because all pages have been loaded
-      expect(sheetHandlerMock.appendLineItems).toHaveBeenCalledWith([
+      expect(sheetHandlerMock.writeLineItems).toHaveBeenCalledWith([
         jasmine.objectContaining({id: 1, name: 'mock-line-item-1'}),
         jasmine.objectContaining({id: 2, name: 'mock-line-item-2'}),
       ]);

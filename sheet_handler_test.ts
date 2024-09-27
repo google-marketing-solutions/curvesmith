@@ -95,74 +95,6 @@ describe('SheetHandler', () => {
     sheetHandler = new SheetHandler(sheetMock);
   });
 
-  describe('.appendLineItems', () => {
-    let lineItemsRangeName: string;
-
-    beforeEach(() => {
-      // Configure the LINE_ITEMS named range.
-      lineItemsRangeName = getLocalRangeName(
-        /* sheet= */ sheetMock,
-        /* rangeName= */ SheetHandler.NAMED_RANGE_LINE_ITEMS,
-      );
-      rangeMock = createRangeMock(
-        sheetMock,
-        /* row= */ 1,
-        /* column= */ 1,
-        /* numRows= */ 10,
-        /* numColumns= */ 6,
-      );
-      namedRangeMock = createNamedRangeMock(lineItemsRangeName, rangeMock);
-      spreadsheetMock.getNamedRanges.and.returnValue([namedRangeMock]);
-      spreadsheetMock.getRangeByName
-        .withArgs(lineItemsRangeName)
-        .and.returnValue(rangeMock);
-    });
-
-    it('appends data to the start of an empty range', () => {
-      rangeMock.getValues.and.returnValue(
-        createFakeLineData(/* lineItemCount= */ 0, /* rowCount= */ 10),
-      );
-
-      const rowIndex = sheetHandler.appendLineItems([MOCK_LINE_ITEM_ROW]);
-
-      expect(rowIndex).toBe(1); // 0 test lines, 1 new line
-    });
-
-    it('appends data to first empty row in a range', () => {
-      rangeMock.getValues.and.returnValue(
-        createFakeLineData(/* lineItemCount= */ 5, /* rowCount= */ 10),
-      );
-
-      const rowIndex = sheetHandler.appendLineItems([MOCK_LINE_ITEM_ROW]);
-
-      expect(rowIndex).toBe(6); // 5 test lines, 1 new line
-    });
-
-    it('appends data past the end of the named range', () => {
-      rangeMock.getValues.and.returnValue(
-        createFakeLineData(/* lineItemCount= */ 10, /* rowCount= */ 10),
-      );
-
-      const rowIndex = sheetHandler.appendLineItems([MOCK_LINE_ITEM_ROW]);
-
-      expect(rowIndex).toBe(11); // 10 test lines, 1 new line
-    });
-
-    it('returns undefined if no line items are appended', () => {
-      const rowIndex = sheetHandler.appendLineItems([]);
-
-      expect(rowIndex).toBeUndefined();
-    });
-
-    it('throws an error if the LINE_ITEMS range does not exist', () => {
-      spreadsheetMock.getNamedRanges.and.returnValue([]);
-
-      expect(() => {
-        sheetHandler.appendLineItems([MOCK_LINE_ITEM_ROW]);
-      }).toThrowError('LINE_ITEMS range does not exist');
-    });
-  });
-
   describe('.getAdUnitId', () => {
     let adUnitIdRangeName: string;
 
@@ -378,6 +310,54 @@ describe('SheetHandler', () => {
 
       expect(() => {
         sheetHandler.getSelectedLineItems();
+      }).toThrowError('LINE_ITEMS range does not exist');
+    });
+  });
+
+  describe('.writeLineItems', () => {
+    let lineItemsRangeName: string;
+
+    beforeEach(() => {
+      // Configure the LINE_ITEMS named range.
+      lineItemsRangeName = getLocalRangeName(
+        /* sheet= */ sheetMock,
+        /* rangeName= */ SheetHandler.NAMED_RANGE_LINE_ITEMS,
+      );
+      rangeMock = createRangeMock(
+        sheetMock,
+        /* row= */ 1,
+        /* column= */ 1,
+        /* numRows= */ 10,
+        /* numColumns= */ 6,
+      );
+      namedRangeMock = createNamedRangeMock(lineItemsRangeName, rangeMock);
+      spreadsheetMock.getNamedRanges.and.returnValue([namedRangeMock]);
+      spreadsheetMock.getRangeByName
+        .withArgs(lineItemsRangeName)
+        .and.returnValue(rangeMock);
+    });
+
+    it('expands the named range (writing 30 rows to 10-row named range)', () => {
+      const lineItemRows = Array(30).fill(MOCK_LINE_ITEM_ROW);
+
+      sheetHandler.writeLineItems(lineItemRows);
+
+      expect(namedRangeMock.setRange).toHaveBeenCalledTimes(1);
+    });
+
+    it('leave the named range unchanged (writing 5 rows to 10-row named range', () => {
+      const lineItemRows = Array(5).fill(MOCK_LINE_ITEM_ROW);
+
+      sheetHandler.writeLineItems(lineItemRows);
+
+      expect(namedRangeMock.setRange).not.toHaveBeenCalled();
+    });
+
+    it('throws an error if the LINE_ITEMS range does not exist', () => {
+      spreadsheetMock.getNamedRanges.and.returnValue([]);
+
+      expect(() => {
+        sheetHandler.writeLineItems([MOCK_LINE_ITEM_ROW]);
       }).toThrowError('LINE_ITEMS range does not exist');
     });
   });
