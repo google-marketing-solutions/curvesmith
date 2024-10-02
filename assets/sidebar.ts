@@ -98,13 +98,15 @@ export function applyHistorical() {
   renderer.beginTask('Applying historical, please wait...');
 
   google.script.run
-    .withSuccessHandler(() =>
-      renderer.finishTaskWithSuccess(
-        'Delivery pacing source reset to historical.',
-      ),
-    )
+    .withSuccessHandler((lineItemIds: number[]) => {
+      renderer.updateLineItemsInParallel(
+        /* operation= */ 'Reset historical',
+        /* callbackName= */ 'applyHistorical',
+        lineItemIds,
+      );
+    })
     .withFailureHandler((e) => renderer.finishTaskWithFailure(e))
-    ['callback']('applyHistorical');
+    ['callback']('beginApplyHistorical');
 }
 
 export function copyTemplate() {

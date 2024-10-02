@@ -125,6 +125,10 @@ p {
   padding: 8px 5px;
 }
 
+.timer {
+  font-weight: bold;
+}
+
 @keyframes flash {
   from {
     opacity: 1;

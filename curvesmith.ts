@@ -34,6 +34,7 @@ import {AdManagerServerFault} from 'gam_apps_script/ad_manager_error';
 const CALLBACK_FUNCTIONS: {[id: string]: (...args: any[]) => any} = {
   /* Server Features */
   'applyHistorical': applyHistorical,
+  'beginApplyHistorical': beginApplyHistorical,
   'beginLoadLineItems': beginLoadLineItems,
   'copyTemplate': copyTemplate,
   'loadLineItems': loadLineItems,
@@ -49,7 +50,7 @@ const CALLBACK_FUNCTIONS: {[id: string]: (...args: any[]) => any} = {
   'initializeSpreadsheet': initializeSpreadsheet,
 };
 
-const SCRIPT_VERSION = '0.0.1';
+const SCRIPT_VERSION = '0.0.2';
 
 /**
  * Calls the specified callback function with the provided arguments.
@@ -115,43 +116,6 @@ export function showSidebar(): void {
  * determined to be the optimal tradeoff between UX and performance.
  */
 const AD_MANAGER_API_SUGGESTED_PAGE_SIZE = 50;
-
-/**
- * Applies historical delivery pacing to all selected line items within the
- * active sheet.
- */
-function applyHistorical(
-  adManagerHandler: am_handler.AdManagerHandler = getAdManagerHandler(),
-  sheetHandler: SheetHandler = getSheetHandler(),
-): void {
-  const lineItemRows = sheetHandler.getSelectedLineItems();
-
-  if (lineItemRows.length === 0) {
-    throw new Error('No line items are selected');
-  }
-
-  const WARNING_MESSAGE =
-    'Setting the delivery pacing source to "historical" cannot be reverted. ' +
-    'Any existing custom curves will be lost. Are you sure you want to proceed?';
-
-  if (shouldCancelAction(WARNING_MESSAGE)) {
-    throw new Error('User cancelled application of historical delivery pacing');
-  }
-
-  const lineItemIds = lineItemRows.map((lineItemRow) => lineItemRow.id);
-
-  try {
-    transformAndUploadLineItems(
-      lineItemIds,
-      (lineItems) => {
-        adManagerHandler.applyHistoricalToLineItems(lineItems);
-      },
-      adManagerHandler,
-    );
-  } catch (error) {
-    throw new Error('Partial completion');
-  }
-}
 
 /**
  * Creates a new copy of the custom curve template sheet. A user may also just
@@ -372,6 +336,31 @@ function beginLoadLineItems(
 }
 
 /**
+ * Offers the user the option of applying historical delivery pacing to the
+ * selected line items. If the user chooses to proceed, then a list of line item
+ * IDs is returned for subsequent processing.
+ */
+function beginApplyHistorical(
+  sheetHandler: SheetHandler = getSheetHandler(),
+): number[] {
+  const lineItemRows = sheetHandler.getSelectedLineItems();
+
+  if (lineItemRows.length === 0) {
+    throw new Error('No line items are selected');
+  }
+
+  const WARNING_MESSAGE =
+    'Setting the delivery pacing source to "historical" cannot be reverted. ' +
+    'Any existing custom curves will be lost. Are you sure you want to proceed?';
+
+  if (shouldCancelAction(WARNING_MESSAGE)) {
+    throw new Error('User cancelled application of historical delivery pacing');
+  }
+
+  return lineItemRows.map((lineItemRow) => lineItemRow.id);
+}
+
+/**
  * Retrieves line items from the Ad Manager API and caches them in the script
  * properties cache. Once all expected line items have been cached, the line
  * item metadata is written to the active sheet.
@@ -546,46 +535,62 @@ function identifyLineItemFailures(
  * Given a list of line item IDs, retrieve the corresponding line items from
  * Ad Manager, apply a transformation to the line items, and then upload the
  * modified line items to Ad Manager. To ensure performance, these operations
- * are performed in batches. If any errors occur during a batch, the user is
- * given the option to exclude the failing line items and try again. This option
- * will only be presented once, after which the remaining line items will be
- * uploaded without further prompting.
+ * are performed in batches.
+ *
+ * If any line items fail to upload due to configuration issues (e.g. inactive
+ * key-value targeting, etc.), then those lines will be removed and the upload
+ * will be resubmitted. If server failures occur (e.g. quota exceeded or
+ * concurrency issues), then the upload will also be retried up to 8 times with
+ * an increasing delay between attempts.
+ * @param lineItemIds A complete list of all line item IDs to upload
+ * @param offset The offset into the ID array to use for the request
+ * @param limit The number of line items to handle
+ * @param transformer The function to apply to the line items
+ * @return A list of error messages for display
  */
 function transformAndUploadLineItems(
   lineItemIds: number[],
+  offset: number,
+  limit: number,
   transformer: (lineItems: ad_manager.LineItem[]) => void,
   adManagerHandler: am_handler.AdManagerHandler = getAdManagerHandler(),
-): void {
-  const batchSize = AD_MANAGER_API_SUGGESTED_PAGE_SIZE;
-
-  const RETRY_MESSAGE =
-    'One or more errors occurred during an upload batch. ' +
-    'Exclude the problematic line items and try again?';
-
-  let offset = 0;
+): string[] {
+  let lineItems: ad_manager.LineItem[] = [];
   let firstFailure = true;
   let errorMessages: string[] = [];
 
+  let success = false;
+  let retryAttempt = 0;
+  const failureIdList = new Set<number>();
+
   do {
-    const batchOffset = offset + batchSize;
-    const lineItemIdsBatch = lineItemIds.slice(offset, batchOffset);
-
-    setTaskProgress('Retrieving', offset, lineItemIds.length);
-
-    const lineItems = getLineItemsWithIds(lineItemIdsBatch, adManagerHandler);
-
-    setTaskProgress('Retrieved', batchOffset, lineItemIds.length);
-
-    transformer(lineItems);
-
-    setTaskProgress('Uploading', batchOffset, lineItemIds.length);
-
-    const failureIdList = new Set<number>();
-
     try {
+      const lineItemIdsBatch = lineItemIds.slice(offset, offset + limit);
+
+      lineItems = getLineItemsWithIds(lineItemIdsBatch, adManagerHandler);
+
+      transformer(lineItems);
+
       adManagerHandler.uploadLineItems(lineItems);
+
+      success = true;
     } catch (e) {
       if (e instanceof AdManagerServerFault) {
+        const errorString = e.errors[0].errorString;
+
+        switch (errorString) {
+          case 'QuotaError.EXCEEDED_QUOTA':
+          case 'CommonError.CONCURRENT_MODIFICATION': {
+            Logger.log(errorString + ' @ attempt ' + retryAttempt);
+
+            retryAttempt++;
+
+            Utilities.sleep(retryAttempt * 1000);
+
+            continue;
+          }
+        }
+
         identifyLineItemFailures(e, lineItems, failureIdList, errorMessages);
 
         // If no lines were identified in the error, then the error is
@@ -594,9 +599,7 @@ function transformAndUploadLineItems(
           throw e;
         }
 
-        if (firstFailure && shouldCancelAction(RETRY_MESSAGE)) {
-          break;
-        } else {
+        if (firstFailure) {
           firstFailure = false;
 
           // Remove any line items that failed to upload from the batch
@@ -606,39 +609,92 @@ function transformAndUploadLineItems(
 
           // Attempt to upload the remaining line items
           adManagerHandler.uploadLineItems(filteredLineItems);
+
+          success = true;
         }
+      } else {
+        throw e;
       }
-    } finally {
-      offset += lineItemIdsBatch.length;
-
-      setTaskProgress('Uploaded', offset, lineItemIds.length);
     }
-  } while (offset < lineItemIds.length);
+  } while (!success && retryAttempt < 8);
 
-  if (errorMessages.length > 0) {
-    throw new Error(errorMessages.join(','));
+  updateUploadStatus(lineItemIds.length, limit);
+
+  return errorMessages;
+}
+
+/**
+ * Updates the progress bar with the number of line items uploaded. Due to the
+ * concurrent execution of the upload process, we rely on the AppsScript lock
+ * service to ensure that only one instance of this function is running at a
+ * time.
+ */
+function updateUploadStatus(lineItemCount: number, limit: number) {
+  const lock = LockService.getUserLock();
+
+  try {
+    lock.waitLock(5000);
+
+    const taskProgress = getTaskProgress();
+
+    setTaskProgress('Uploaded', taskProgress.current + limit, lineItemCount);
+  } catch (e) {
+    Logger.log('Could not obtain lock after 5 seconds.');
+  } finally {
+    lock.releaseLock();
   }
+}
+
+/**
+ * Applies historical delivery pacing to all selected line items within the
+ * active sheet.
+ */
+function applyHistorical(
+  lineItemIds: number[],
+  offset: number,
+  limit: number,
+  adManagerHandler: am_handler.AdManagerHandler = getAdManagerHandler(),
+): void {
+  transformAndUploadLineItems(
+    lineItemIds,
+    offset,
+    limit,
+    (lineItems) => {
+      adManagerHandler.applyHistoricalToLineItems(lineItems);
+    },
+    adManagerHandler,
+  );
 }
 
 /**
  * Updates the line items with the custom delivery curve specified in the
  * active sheet.
- * @return An array containing status for each line item update requested
+ * @param lineItemIds A complete list of all line item IDs to upload
+ * @param offset The offset into the ID array to use for the request
+ * @param limit The number of line items to handle
  */
 function uploadLineItems(
   lineItemIds: number[],
+  offset: number,
+  limit: number,
   adManagerHandler: am_handler.AdManagerHandler = getAdManagerHandler(),
   sheetHandler: SheetHandler = getSheetHandler(),
 ): void {
   const curveTemplate = sheetHandler.getCurveTemplate();
 
-  transformAndUploadLineItems(
+  const errorMessages = transformAndUploadLineItems(
     lineItemIds,
+    offset,
+    limit,
     (lineItems) => {
       adManagerHandler.applyCurveToLineItems(lineItems, curveTemplate);
     },
     adManagerHandler,
   );
+
+  if (errorMessages.length > 0) {
+    throw new Error(errorMessages.join(','));
+  }
 }
 
 global.onEdit = onEdit;

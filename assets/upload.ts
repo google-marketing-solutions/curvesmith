@@ -160,8 +160,6 @@ export class UploadRenderer extends UIElementRenderer {
   override finishTaskWithFailure(error: Error) {
     super.finishTaskWithFailure(error);
 
-    this.parseLineItemFailures(error.message);
-
     this.showCloseButton(/* enabled= */ true);
   }
 
@@ -169,6 +167,15 @@ export class UploadRenderer extends UIElementRenderer {
     super.finishTaskWithSuccess(message);
 
     this.showCloseButton(/* enabled= */ true);
+  }
+
+  /**
+   * Handles an error returned from the server. Currently this is limited to
+   * parsing the error message to extract the line item IDs that failed to
+   * upload. If any are found, then a special error stage is displayed.
+   */
+  override handleError(error: Error) {
+    this.parseLineItemFailures(error.message);
   }
 
   /** Approves all line items and skips to the upload stage. */
@@ -603,12 +610,13 @@ function closeDialog() {
 function confirmUpload() {
   renderer.beginTask('Starting upload, please wait...');
 
-  google.script.run
-    .withSuccessHandler(() =>
-      renderer.finishTaskWithSuccess('Upload complete.'),
-    )
-    .withFailureHandler((e) => renderer.finishTaskWithFailure(e))
-    ['callback']('uploadLineItems', [renderer.approvedLineItemIds.values]);
+  const lineItemIds = renderer.approvedLineItemIds.values;
+
+  renderer.updateLineItemsInParallel(
+    /* operation= */ 'Upload',
+    /* callbackName= */ 'uploadLineItems',
+    lineItemIds,
+  );
 }
 
 /**

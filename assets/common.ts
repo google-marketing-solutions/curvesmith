@@ -72,6 +72,13 @@ export class UIElementRenderer extends EventTarget {
     this.logStatus(message);
   }
 
+  /**
+   * Handles an error returned from the server script.
+   *
+   * Typically this is called by a server script's `withFailureHandler`.
+   */
+  handleError(error: Error) {}
+
   /** Logs a status message to the UI. */
   logStatus(status: string, failure = false) {
     this.queryAndExecute<HTMLElement>('.status', (statusCell) => {
@@ -83,6 +90,51 @@ export class UIElementRenderer extends EventTarget {
 
       statusCell.textContent = status;
     });
+  }
+
+  /**
+   * Splits an update operation into multiple concurrent server-side requests to
+   * take advantage of the asynchronous nature of `google.script.run`.
+   * @param operation The name of the operation to perform
+   * @param callbackName The name of the server-side callback to call
+   * @param lineItemIds The list of line item IDs to update
+   */
+  updateLineItemsInParallel(
+    operation: string,
+    callbackName: string,
+    lineItemIds: number[],
+  ) {
+    const BATCH_SIZE = 50; // Number of line items to update per batch
+
+    let taskCompletionCount = 0;
+
+    const requests = Math.ceil(lineItemIds.length / BATCH_SIZE);
+
+    for (let i = 0; i < requests; i++) {
+      google.script.run
+        .withSuccessHandler(() => {
+          console.log(
+            'Success: ' + (taskCompletionCount + 1) + ' of ' + requests,
+          );
+
+          if (++taskCompletionCount === requests) {
+            this.finishTaskWithSuccess(operation + ' complete.');
+          }
+        })
+        .withFailureHandler((e) => {
+          console.log(e.message);
+          console.log(
+            'Failure: ' + (taskCompletionCount + 1) + ' of ' + requests,
+          );
+
+          this.handleError(e);
+
+          if (++taskCompletionCount === requests) {
+            this.finishTaskWithSuccess(operation + ' complete.');
+          }
+        })
+        ['callback'](callbackName, [lineItemIds, i * BATCH_SIZE, BATCH_SIZE]);
+    }
   }
 
   /**
@@ -122,8 +174,12 @@ export class UIElementRenderer extends EventTarget {
 
     // Show a small progress bar to indicate that the script is running.
     this.queryAndExecute<HTMLElement>('.progress-bar', (progressBar) => {
-      progressBar.style.width = '5%';
+      progressBar.style.width = '1%';
       progressBar.style.animation = 'flash 1s infinite alternate';
+    });
+
+    this.queryAndExecute<HTMLElement>('.progress-text', (progressText) => {
+      progressText.textContent = '';
     });
   }
 
