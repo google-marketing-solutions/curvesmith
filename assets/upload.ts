@@ -23,7 +23,7 @@ import "./common.css";
 import "./upload.css";
 
 import {sanitizeHtml} from 'safevalues';
-import {safeElement} from 'safevalues/dom';
+import {setElementInnerHtml} from 'safevalues/dom';
 import {UIElementRenderer} from './common';
 
 /**
@@ -299,7 +299,7 @@ export class UploadRenderer extends UIElementRenderer {
   protected renderSafeHtml(element: HTMLElement, html: string) {
     const safeHtml = sanitizeHtml(html);
 
-    safeElement.setInnerHtml(element, safeHtml);
+    setElementInnerHtml(element, safeHtml);
   }
 
   /** Adds curve preview data to a table within the dialog. */
