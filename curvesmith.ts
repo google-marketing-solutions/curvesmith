@@ -50,7 +50,7 @@ const CALLBACK_FUNCTIONS: {[id: string]: (...args: any[]) => any} = {
   'initializeSpreadsheet': initializeSpreadsheet,
 };
 
-const SCRIPT_VERSION = '0.0.2';
+const SCRIPT_VERSION = '0.0.3';
 
 /**
  * Calls the specified callback function with the provided arguments.

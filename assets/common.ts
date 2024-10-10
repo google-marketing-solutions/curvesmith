@@ -30,7 +30,9 @@ export declare interface TaskProgress {
   total: number;
 }
 
-let startTime: Date, timerInterval: number;
+let startTime: Date;
+let progressInterval: number;
+let timerInterval: number;
 
 /** Base class for UI elements. */
 export class UIElementRenderer extends EventTarget {
@@ -170,7 +172,10 @@ export class UIElementRenderer extends EventTarget {
   /** Initializes the progress bar and kicks off timer tracking. */
   private startProgress() {
     startTime = new Date();
-    timerInterval = window.setInterval(() => this.updateProgress(), 1000);
+    // Split the progress update into two intervals to avoid UI lag.
+    timerInterval = window.setInterval(() => this.updateTimer(), 1000);
+    // Update the progress bar every 10 seconds to reduce calls to the server.
+    progressInterval = window.setInterval(() => this.updateProgress(), 10000);
 
     // Show a small progress bar to indicate that the script is running.
     this.queryAndExecute<HTMLElement>('.progress-bar', (progressBar) => {
@@ -186,6 +191,7 @@ export class UIElementRenderer extends EventTarget {
   /** Fills the progress bar and stops the timer. */
   private stopProgress() {
     window.clearInterval(timerInterval);
+    window.clearInterval(progressInterval);
 
     google.script.run['callback']('clearTaskProgress');
 
@@ -200,15 +206,10 @@ export class UIElementRenderer extends EventTarget {
   }
 
   /**
-   * Updates the progress bar and timer in the UI. Progress status is dependent
-   * on a server callback (`getTaskProgress`) that provides feedback. Not all
-   * server callbacks implement this feedback.
+   * Updates the progress bar based on a server callback (`getTaskProgress`)
+   * that provides feedback. Not all server commands implement this feedback.
    */
   private updateProgress() {
-    this.queryAndExecute<HTMLElement>('.timer', (timer) => {
-      timer.textContent = 'Elapsed Time: ' + this.formatTimeElapsed();
-    });
-
     google.script.run
       .withSuccessHandler((x) => this.updateProgressBar(x))
       ['callback']('getTaskProgress');
@@ -232,6 +233,13 @@ export class UIElementRenderer extends EventTarget {
         }
       });
     }
+  }
+
+  /** Updates the elapsed timer in the UI. This is entirely client-side. */
+  private updateTimer() {
+    this.queryAndExecute<HTMLElement>('.timer', (timer) => {
+      timer.textContent = 'Elapsed Time: ' + this.formatTimeElapsed();
+    });
   }
 }
 
