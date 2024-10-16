@@ -25,6 +25,8 @@ import {
 } from './ad_manager_handler';
 import * as ad_manager from './typings/ad_manager';
 
+const TIME_ZONE_ID = 'America/Los_Angeles';
+
 describe('AdManagerHandler', () => {
   let mockClient: jasmine.SpyObj<AdManagerClient>;
   let mockInventoryService: jasmine.SpyObj<AdManagerService>;
@@ -41,7 +43,7 @@ describe('AdManagerHandler', () => {
     mockNetwork = jasmine.createSpyObj('Network', ['timeZone']);
 
     Object.defineProperty(mockNetwork, 'timeZone', {
-      get: () => 'America/Los_Angeles',
+      get: () => TIME_ZONE_ID,
     });
 
     mockNetworkService = jasmine.createSpyObj('AdManagerService', [
@@ -70,14 +72,14 @@ describe('AdManagerHandler', () => {
   describe('.getAdUnitIds', () => {
     it('returns an empty array if a parent ad unit ID is not provided', () => {
       const adUnitId = '';
-      const adManagerHandler = new AdManagerHandler(mockClient);
+      const adManagerHandler = new AdManagerHandler(mockClient, TIME_ZONE_ID);
 
       expect(adManagerHandler.getAdUnitIds(adUnitId)).toEqual([]);
     });
 
     it('returns the parent ad unit ID even if no children are found', () => {
       const adUnitId = '1234';
-      const adManagerHandler = new AdManagerHandler(mockClient);
+      const adManagerHandler = new AdManagerHandler(mockClient, TIME_ZONE_ID);
       mockInventoryService.performOperation.and.returnValue({results: []});
 
       expect(adManagerHandler.getAdUnitIds(adUnitId)).toEqual([adUnitId]);
@@ -91,7 +93,7 @@ describe('AdManagerHandler', () => {
       // explicit timezone, instead defaulting to the local one which should
       // match Ad Manager. We simulate this behavior with the GMT offset.
       const date = new Date('2024-01-01 GMT-08:00');
-      const adManagerHandler = new AdManagerHandler(mockClient);
+      const adManagerHandler = new AdManagerHandler(mockClient, TIME_ZONE_ID);
 
       expect(adManagerHandler.getDateTime(date)).toEqual({
         date: {
@@ -102,7 +104,7 @@ describe('AdManagerHandler', () => {
         hour: 0,
         minute: 0,
         second: 0,
-        timeZoneId: 'America/Los_Angeles',
+        timeZoneId: TIME_ZONE_ID,
       });
     });
   });
@@ -118,9 +120,9 @@ describe('AdManagerHandler', () => {
         hour: 2,
         minute: 57,
         second: 0,
-        timeZoneId: 'America/Los_Angeles',
+        timeZoneId: TIME_ZONE_ID,
       };
-      const adManagerHandler = new AdManagerHandler(mockClient);
+      const adManagerHandler = new AdManagerHandler(mockClient, TIME_ZONE_ID);
 
       expect(adManagerHandler.getDateString(dateTime)).toEqual(
         '2024-05-28 02:57:00',
@@ -204,7 +206,7 @@ describe('AdManagerHandler', () => {
         earliestEndDate: new Date('2025-01-01 00:00:00'),
         nameFilter: '',
       };
-      const adManagerHandler = new AdManagerHandler(mockClient);
+      const adManagerHandler = new AdManagerHandler(mockClient, TIME_ZONE_ID);
 
       // The first call should cache the LineItemService.
       adManagerHandler.getLineItemDtoPage(lineItemFilter, 0, 1);
@@ -285,7 +287,7 @@ describe('AdManagerHandler', () => {
         earliestEndDate: new Date('2025-01-01 00:00:00'),
         nameFilter: 'ROS',
       };
-      const adManagerHandler = new AdManagerHandler(mockClient);
+      const adManagerHandler = new AdManagerHandler(mockClient, TIME_ZONE_ID);
 
       const lineItemDtoPage = adManagerHandler.getLineItemDtoPage(
         lineItemFilter,
@@ -352,7 +354,7 @@ function getLineItemsByAdUnitFilter(
   client: AdManagerClient,
   adUnitIds: string[],
 ): LineItemDtoPage {
-  const adManagerHandler = new AdManagerHandler(client);
+  const adManagerHandler = new AdManagerHandler(client, TIME_ZONE_ID);
 
   // Both dates are irrelevant because they are PQL arguments and we are mocking
   // the LineItemService call.

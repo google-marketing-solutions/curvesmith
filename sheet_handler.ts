@@ -364,6 +364,11 @@ export class SpreadsheetHandler {
     );
   }
 
+  /** Returns the IANA timezone ID of the associated spreadsheet. */
+  getSpreadsheetTimeZone(): string {
+    return this.spreadsheet.getSpreadsheetTimeZone();
+  }
+
   /**
    * Sets the spreadsheet timezone to the provided value.
    *

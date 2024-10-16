@@ -174,8 +174,8 @@ export class UIElementRenderer extends EventTarget {
     startTime = new Date();
     // Split the progress update into two intervals to avoid UI lag.
     timerInterval = window.setInterval(() => this.updateTimer(), 1000);
-    // Update the progress bar every 10 seconds to reduce calls to the server.
-    progressInterval = window.setInterval(() => this.updateProgress(), 10000);
+    // Update the progress bar every 5 seconds to reduce calls to the server.
+    progressInterval = window.setInterval(() => this.updateProgress(), 5000);
 
     // Show a small progress bar to indicate that the script is running.
     this.queryAndExecute<HTMLElement>('.progress-bar', (progressBar) => {

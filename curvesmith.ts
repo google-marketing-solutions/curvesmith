@@ -145,10 +145,11 @@ function getAdManagerHandler(
 ): am_handler.AdManagerHandler {
   const networkId: string = spreadsheetHandler.getNetworkId();
   const apiVersion: string = spreadsheetHandler.getApiVersion();
+  const timeZoneId: string = spreadsheetHandler.getSpreadsheetTimeZone();
 
   const client = am_handler.createAdManagerClient(networkId, apiVersion);
 
-  return new am_handler.AdManagerHandler(client);
+  return new am_handler.AdManagerHandler(client, timeZoneId);
 }
 
 /**

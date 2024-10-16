@@ -100,7 +100,10 @@ const TOTAL_MILLIPERCENT_REQUIRED = 100000;
 export class AdManagerHandler {
   private readonly serviceCache: Map<string, AdManagerService>;
 
-  constructor(readonly client: AdManagerClient) {
+  constructor(
+    readonly client: AdManagerClient,
+    readonly timeZoneId: string,
+  ) {
     this.serviceCache = new Map<string, AdManagerService>();
   }
 
@@ -218,10 +221,9 @@ export class AdManagerHandler {
    * @param date A date value initialized using the same time zone as Ad Manager
    */
   getDateTime(date: Date): ad_manager.DateTime {
-    const timeZoneId = this.getTimeZoneId();
     const localeString = date.toLocaleString('en-US', {
       hour12: false,
-      timeZone: timeZoneId,
+      timeZone: this.timeZoneId,
     });
 
     const dateMatch = localeString.match(
@@ -247,7 +249,7 @@ export class AdManagerHandler {
       hour: parseInt(hour, 10),
       minute: parseInt(minute, 10),
       second: parseInt(second, 10),
-      timeZoneId,
+      timeZoneId: this.timeZoneId,
     };
   }
 
