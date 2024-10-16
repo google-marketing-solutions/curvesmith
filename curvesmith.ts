@@ -498,20 +498,25 @@ function showUploadDialog(): void {
   showDialog(/* title= */ 'Curve Upload', /* previewOnly= */ false);
 }
 
+/** Holds information about a line item that failed to upload. */
+interface LineItemError {
+  lineItemId: number;
+  errorString: string;
+}
+
 /**
- * Extracts metadata about line items that failed to upload.
+ * Returns a list of line item errors based on the Ad Manager API response.
  * @param serverFault The error returned from the Ad Manager API
  * @param lineItems The line items that were sent to the Ad Manager API
- * @param failureIdList A modified set of line item IDs that failed to upload
- * @param errorMessages A modified list of error messages for display
+ * @return A list of line item errors
  */
-function identifyLineItemFailures(
+function extractLineItemErrors(
   serverFault: AdManagerServerFault,
   lineItems: ad_manager.LineItem[],
-  failureIdList: Set<number>,
-  errorMessages: string[],
-) {
+): LineItemError[] {
   const fieldPathRegex = /^lineItem\[(\d+)\]\.([^;]*)?$/;
+
+  const errors: LineItemError[] = [];
 
   serverFault.errors.forEach((error) => {
     const fieldPathMatch = error.fieldPath.match(fieldPathRegex);
@@ -521,15 +526,34 @@ function identifyLineItemFailures(
 
       const lineItem = lineItems[parseInt(lineItemIndex)];
 
-      // Cache line items that are failing
-      failureIdList.add(lineItem.id);
+      const lineItemError: LineItemError = {
+        lineItemId: lineItem.id,
+        errorString: `${error.errorString} @ lineItem[${lineItem.id}].${fieldPath};`,
+      };
 
-      // Cache error messages for display upon completion
-      errorMessages.push(
-        `${error.errorString} @ lineItem[${lineItem.id}].${fieldPath};`,
-      );
+      errors.push(lineItemError);
     }
   });
+
+  return errors;
+}
+
+/**
+ * Returns true if the API error is retryable, false otherwise.
+ * @param serverFault The error returned from the Ad Manager API
+ * @return True if the error is retryable, false otherwise
+ */
+function isTransientAdManagerError(serverFault: AdManagerServerFault): boolean {
+  const errorString = serverFault.errors[0].errorString;
+
+  switch (errorString) {
+    case 'CommonError.CONCURRENT_MODIFICATION':
+    case 'QuotaError.EXCEEDED_QUOTA': {
+      return true;
+    }
+    default:
+      return false;
+  }
 }
 
 /**
@@ -557,67 +581,56 @@ function transformAndUploadLineItems(
   adManagerHandler: am_handler.AdManagerHandler = getAdManagerHandler(),
 ): string[] {
   let lineItems: ad_manager.LineItem[] = [];
-  let firstFailure = true;
   let errorMessages: string[] = [];
 
-  let success = false;
-  let retryAttempt = 0;
-  const failureIdList = new Set<number>();
+  let attempt = 1;
+  let lineItemsRetrieved = false;
+  let uploadComplete = false;
+
+  const lineItemIdsBatch = lineItemIds.slice(offset, offset + limit);
 
   do {
     try {
-      const lineItemIdsBatch = lineItemIds.slice(offset, offset + limit);
+      if (!lineItemsRetrieved) {
+        // Don't redownload line items if we already have them
+        lineItems = getLineItemsWithIds(lineItemIdsBatch, adManagerHandler);
 
-      lineItems = getLineItemsWithIds(lineItemIdsBatch, adManagerHandler);
+        lineItemsRetrieved = true;
+      }
 
       transformer(lineItems);
 
       adManagerHandler.uploadLineItems(lineItems);
 
-      success = true;
+      uploadComplete = true;
     } catch (e) {
       if (e instanceof AdManagerServerFault) {
-        const errorString = e.errors[0].errorString;
+        if (isTransientAdManagerError(e)) {
+          Logger.log('Error: Waiting ' + attempt + ' seconds for retry.');
 
-        switch (errorString) {
-          case 'QuotaError.EXCEEDED_QUOTA':
-          case 'CommonError.CONCURRENT_MODIFICATION': {
-            Logger.log(errorString + ' @ attempt ' + retryAttempt);
+          Utilities.sleep(attempt * 1000);
+        } else {
+          const lineItemErrors = extractLineItemErrors(e, lineItems);
 
-            retryAttempt++;
+          if (lineItemErrors.length > 0) {
+            Logger.log('Error: Removing line items failures before retry.');
+            // Remove any line items that failed to upload from the batch
+            lineItems = lineItems.filter(
+              (x) => !lineItemErrors.some((y) => y.lineItemId === x.id),
+            );
 
-            Utilities.sleep(retryAttempt * 1000);
-
-            continue;
+            errorMessages.push(...lineItemErrors.map((x) => x.errorString));
+          } else {
+            throw e; // Error is not retryable and is not line item specific
           }
         }
-
-        identifyLineItemFailures(e, lineItems, failureIdList, errorMessages);
-
-        // If no lines were identified in the error, then the error is
-        // unexpected and should be rethrown.
-        if (failureIdList.size === 0) {
-          throw e;
-        }
-
-        if (firstFailure) {
-          firstFailure = false;
-
-          // Remove any line items that failed to upload from the batch
-          const filteredLineItems = lineItems.filter(
-            (lineItem) => !failureIdList.has(lineItem.id),
-          );
-
-          // Attempt to upload the remaining line items
-          adManagerHandler.uploadLineItems(filteredLineItems);
-
-          success = true;
-        }
       } else {
-        throw e;
+        throw e; // Rethrow unrecognized error
       }
     }
-  } while (!success && retryAttempt < 8);
+
+    attempt++;
+  } while (!uploadComplete && attempt <= 8);
 
   updateUploadStatus(lineItemIds.length, limit);
 
